@@ -63,6 +63,6 @@ distclean: clean
 	rm -f Makefile
 
 clean:
-	rm -Rf kelbt tags .*.d *.o klscan.cpp klparse.h klparse.cpp version.h
+	rm -Rf kelbt tags .*.d *.o #klscan.cpp klparse.h klparse.cpp version.h
 
 -include $(DEPS)
