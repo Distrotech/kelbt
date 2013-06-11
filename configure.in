@@ -23,7 +23,7 @@ AC_CONFIG_HEADER(config.h)
 
 dnl Checks for programs.
 AC_PROG_CXX
-AC_DEFINE_UNQUOTED(CXX,$CXX)
+#AC_DEFINE_UNQUOTED(CXX,$CXX)
 
 dnl Set test on c++ compiler.
 AC_LANG_CPLUSPLUS
