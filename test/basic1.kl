@@ -1,0 +1,289 @@
+#include <iostream>
+#include <stdlib.h>
+using std::cout;
+using std::endl;
+
+struct Token { };
+struct LangEl;
+
+struct Parser
+{
+
+	%%{
+		parser Parser;
+
+		# Token names.
+		token word, symbol, litString, number;
+	}%%
+
+	%% write instance_data;
+
+	void init();
+	int parseLangEl( int type, const Token &tokenRef );
+	void finish();
+
+	void token( int tokid );
+};
+
+%% write token_defs;
+
+%%{
+
+parser Parser;
+
+nonterm start {
+	int startVal;
+};
+
+# The first production
+start: word litString hello try {
+	cout << "start = word litString hello;" << endl;
+};
+
+
+hello: A B A try {
+	cout << "hello = A B A;" << endl;
+};
+
+A: symbol try {
+	cout << "A = symbol;" << endl;
+};
+
+A: word try {
+	cout << "A = word;" << endl;
+};
+
+A: number try {
+	cout << "A = number;" << endl;
+};
+
+B: unknown try {
+	cout << "B = unknown;" << endl;
+};
+
+unknown: try {
+	cout << "unknown = ;" << endl;
+};
+
+}%%
+
+%%{
+	write types;
+	write data;
+}%%
+
+
+void Parser::init()
+{
+	%% write init;
+}
+
+void Parser::finish()
+{
+	%% write finish;
+}
+
+int Parser::parseLangEl( int type, const Token &tokenRef )
+{
+	const Token *token = &tokenRef;
+	%% write exec;
+	return errCount == 0 ? 0 : -1;
+}
+
+
+void Parser::token( int tokid )
+{
+	Token token;
+	int result = parseLangEl( tokid, token );
+	if ( result < 0 )
+		cout << "parse error" << endl;
+}
+
+
+void test0()
+{
+	Parser parser;
+	parser.init();
+	parser.token( word );
+	parser.token( litString );
+	parser.token( symbol );
+	parser.token( word );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test1()
+{
+	Parser parser;
+	parser.init();
+	parser.token( word );
+	parser.token( litString );
+	parser.token( word );
+	parser.token( symbol );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test2()
+{
+	Parser parser;
+	parser.init();
+	parser.token( word );
+	parser.token( litString );
+	parser.token( number );
+	parser.token( number );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test3()
+{
+	Parser parser;
+	parser.init();
+	parser.token( word );
+	parser.token( litString );
+	parser.token( number );
+	parser.token( word );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test4()
+{
+	Parser parser;
+	parser.init();
+	parser.token( word );
+	parser.token( litString );
+	parser.token( number );
+	parser.token( word );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test5()
+{
+	Parser parser;
+	parser.init();
+	parser.token( word );
+	parser.token( litString );
+	parser.token( word );
+	parser.token( word );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test6()
+{
+	Parser parser;
+	parser.init();
+	parser.token( word );
+	parser.token( litString );
+	parser.token( word );
+	parser.token( word );
+	parser.token( word );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test7()
+{
+	Parser parser;
+	parser.init();
+	parser.token( word );
+	parser.token( litString );
+	parser.token( word );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test8()
+{
+	Parser parser;
+	parser.init();
+	parser.token( litString );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test9()
+{
+	Parser parser;
+	parser.init();
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+
+int main()
+{
+	test0();
+	test1();
+	test2();
+	test3();
+	test4();
+	test5();
+	test6();
+	test7();
+	test8();
+	test9();
+}
+
+#ifdef _____OUTPUT_____
+A = symbol;
+unknown = ;
+B = unknown;
+A = word;
+hello = A B A;
+start = word litString hello;
+0
+A = word;
+unknown = ;
+B = unknown;
+A = symbol;
+hello = A B A;
+start = word litString hello;
+0
+A = number;
+unknown = ;
+B = unknown;
+A = number;
+hello = A B A;
+start = word litString hello;
+0
+A = number;
+unknown = ;
+B = unknown;
+A = word;
+hello = A B A;
+start = word litString hello;
+0
+A = number;
+unknown = ;
+B = unknown;
+A = word;
+hello = A B A;
+start = word litString hello;
+0
+A = word;
+unknown = ;
+B = unknown;
+A = word;
+hello = A B A;
+start = word litString hello;
+0
+A = word;
+unknown = ;
+B = unknown;
+A = word;
+hello = A B A;
+start = word litString hello;
+parse error
+1
+A = word;
+parse error
+1
+parse error
+1
+parse error
+1
+#endif

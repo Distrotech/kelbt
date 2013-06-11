@@ -1,0 +1,24 @@
+// @IGNORE: yes
+
+%% reduce_reduce
+	token comma;
+	token id;
+	token colon;
+
+	# This is an example of a reduce-reduce conflict. The problem arises because
+	# both type and name have comma in their follow set.
+
+	start: param_spec return_spec comma;
+
+	param_spec: type;
+	param_spec: name_list colon type;
+
+	return_spec: type;
+	return_spec: name colon type;
+
+	type: id;
+	name: id;
+
+	name_list: name;
+	name_list: name comma name_list;
+%%

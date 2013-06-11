@@ -1,0 +1,97 @@
+/*
+ *  Copyright 2004, 2005 Adrian Thurston <thurston@complang.org>
+ */
+
+/*  This file is part of C++ Pre-Parser.
+ *
+ *  C++ Pre-Parser is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ * 
+ *  C++ Pre-Parser is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ * 
+ *  You should have received a copy of the GNU General Public License
+ *  along with C++ Pre-Parser; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA 
+ */
+
+%{
+#include <string.h>
+#include "parser.h"
+%}
+%compare-strncmp
+struct Keyword;
+%%
+asm, KW_Asm
+auto, KW_Auto
+bool, KW_Bool
+break, KW_Break
+case, KW_Case
+catch, KW_Catch
+char, KW_Char
+class, KW_Class
+const, KW_Const
+const_cast, KW_ConstCast
+continue, KW_Continue
+default, KW_Default
+delete, KW_Delete
+do, KW_Do
+double, KW_Double
+dynamic_cast, KW_DynamicCast
+else, KW_Else
+enum, KW_Enum
+explicit, KW_Explicit
+export, KW_Export
+extern, KW_Extern
+false, KW_False
+float, KW_Float
+for, KW_For
+friend, KW_Friend
+goto, KW_Goto
+if, KW_If
+inline, KW_Inline
+int, KW_Int
+long, KW_Long
+mutable, KW_Mutable
+namespace, KW_Namespace
+new, KW_New
+operator, KW_Operator
+private, KW_Private
+protected, KW_Protected
+public, KW_Public
+register, KW_Register
+reinterpret_cast, KW_ReinterpretCast
+return, KW_Return
+short, KW_Short
+signed, KW_Signed
+sizeof, KW_Sizeof
+static, KW_Static
+static_cast, KW_StaticCast
+struct, KW_Struct
+switch, KW_Switch
+template, KW_Template
+this, KW_This
+throw, KW_Throw
+true, KW_True
+try, KW_Try
+typedef, KW_Typedef
+typeid, KW_Typeid
+typename, KW_Typename
+union, KW_Union
+unsigned, KW_Unsigned
+using, KW_Using
+virtual, KW_Virtual
+void, KW_Void
+volatile, KW_Volatile
+wchar_t, KW_WcharT
+while, KW_While
+__typeof, KW_Typeof
+__typeof__, KW_Typeof
+__asm, KW_Asm
+__asm__, KW_Asm
+__restrict, KW_Restrict
+__restrict__, KW_Restrict

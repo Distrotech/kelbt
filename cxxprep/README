@@ -1,0 +1,31 @@
+                            C++ Pre-Parser
+                            ==============
+
+C++ Pre-Parser is a program for making the analysis and transformation of C++
+somewhat easier.  The pre-parser specializes symbols to their various uses,
+resolves names to the language entities they represent and adds symbols to the
+input. 
+
+The "undo" program is can be used to remove the disambiguation symbols from the
+output of CxxPrep.
+
+The TXL grammar file "cpp.grm" includes a rule "undoDisambig" for removing the
+disambuation symbols. A skeleton TXL program for use with CxxPrep follows:
+
+include "cpp.grm"
+
+define program
+        [cpp_program]
+end define
+
+function main
+    replace [program]
+        P [program]
+    by
+        P [undoDisambig]
+end function
+
+BUILDING CxxPrep
+================
+
+CxxPrep requires a recent version of Ragel State Machine compiler.

@@ -1,0 +1,124 @@
+#include <iostream>
+#include <stdlib.h>
+using std::cout;
+using std::endl;
+
+struct Token { };
+struct LangEl;
+
+struct Parser
+{
+	%%{
+		parser Parser;
+
+		# Token names.
+		token a, b;
+	}%%
+
+	%% write instance_data;
+
+	void init();
+	int parseLangEl( int type, const Token &tokenRef );
+	void finish();
+};
+
+%% write token_defs;
+
+%%{
+
+parser Parser;
+
+start: 
+	A1 '!' try {
+		cout << "start-1" << endl;
+	};
+
+start: 
+	A2 b try {
+		cout << "start-2" << endl;
+	};
+
+A1: a A1 try { cout << "UNDOING A1-1" << endl; };
+A1: A1 a try { cout << "UNDOING A1-2" << endl; };
+A1: a try { cout << "UNDOING A1-2" << endl; };
+
+A2: A2 a;
+A2: a;
+
+
+}%%
+
+%%{
+	write types;
+	write data;
+}%%
+
+
+void Parser::init()
+{
+	%% write init;
+}
+
+void Parser::finish()
+{
+	%% write finish;
+}
+
+int Parser::parseLangEl( int type, const Token &tokenRef )
+{
+	const Token *token = &tokenRef;
+	%% write exec;
+	return errCount == 0 ? 0 : -1;
+}
+
+void test0()
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	parser.parseLangEl( a, token );
+	parser.parseLangEl( a, token );
+	parser.parseLangEl( a, token );
+	parser.parseLangEl( a, token );
+	parser.parseLangEl( a, token );
+	parser.parseLangEl( b, token );
+	parser.parseLangEl( Parser_tk_eof, token );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+
+int main()
+{
+	test0();
+}
+
+#ifdef _____OUTPUT_____
+UNDOING A1-2
+UNDOING A1-1
+UNDOING A1-1
+UNDOING A1-1
+UNDOING A1-2
+UNDOING A1-1
+UNDOING A1-1
+UNDOING A1-2
+UNDOING A1-2
+UNDOING A1-1
+UNDOING A1-2
+UNDOING A1-1
+UNDOING A1-1
+UNDOING A1-2
+UNDOING A1-1
+UNDOING A1-2
+UNDOING A1-2
+UNDOING A1-2
+UNDOING A1-1
+UNDOING A1-2
+UNDOING A1-2
+UNDOING A1-1
+UNDOING A1-2
+UNDOING A1-2
+UNDOING A1-2
+UNDOING A1-2
+start-2
+0
+#endif

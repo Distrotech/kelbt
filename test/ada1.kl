@@ -1,0 +1,157 @@
+#include <iostream>
+#include <stdlib.h>
+
+using namespace::std;
+
+struct Token { };
+struct LangEl;
+
+struct Parser
+{
+	%%{ 
+		parser Parser;
+	
+		token
+			# keywords
+			kw_abs, kw_and, kw_array, kw_begin, kw_body, kw_case, kw_constant, kw_declare,
+			kw_else, kw_elsif, kw_end, kw_exception, kw_exit, kw_for, kw_function, kw_if,
+			kw_in, kw_is, kw_loop, kw_mod, kw_not, kw_null, kw_of, kw_or, kw_others, kw_out,
+			kw_package, kw_pragma, kw_private, kw_procedure, kw_raise, kw_range, kw_record,
+			kw_return, kw_reverse, kw_separate, kw_subtype, kw_then, kw_type, kw_use,
+			kw_when, kw_while,
+
+			# Any other word
+			identifier,
+
+			# literals
+			lit_integer, lit_float, lit_string,
+
+			# operators
+			# note that "not", "and", "or", "and then", "or else", "abs", "mod"
+			# are left as keywords.
+			op_mult,                # *
+			op_div,                 # /
+			op_plus,                # +
+			op_minus,               # -
+			op_cat,                 # &
+			op_eq,                  # =
+			op_neq,                 # /=
+			op_lt,                  # <
+			op_lteq,                # <=
+			op_gt,                  # >
+			op_gteq,                # >=
+			op_exponentiation,      # **
+			op_field_qualification, # . 
+			op_left_bracket,        # (
+			op_right_bracket,       # )
+			op_assign,              # :=
+
+			# delimiters
+			de_single_quote,    # '
+			de_dot_dot,         # ..
+			de_colon,           # :
+			de_comma,           # ,
+			de_pipe,            # |
+			de_arrow,           # =>
+			de_unconstrained    # <>
+		;
+	}%%
+
+	%% write instance_data;
+
+	void init();
+	int parseLangEl( int type, const Token *token );
+	void finish();
+
+	void token( int tokid );
+};
+
+%% write token_defs;
+
+%%{
+
+parser Parser;
+
+start: identifier 
+try { 
+	cout << "reduced start = identifier" << endl;
+};
+
+}%%
+
+
+%%{
+	write types;
+	write data;
+}%%
+
+
+void Parser::init()
+{
+	%% write init;
+}
+
+void Parser::finish()
+{
+	%% write finish;
+}
+
+int Parser::parseLangEl( int type, const Token *token )
+{
+	%% write exec;
+	return errCount == 0 ? 0 : -1;
+}
+
+void Parser::token( int tokid )
+{
+	Token token;
+	int result = parseLangEl( tokid, &token );
+	if ( result < 0 )
+		cout << "parse error" << endl;
+}
+
+void test0()
+{
+	Parser parser;
+	parser.init();
+	parser.token( identifier );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test1()
+{
+	Parser parser;
+	parser.init();
+	parser.token( identifier );
+	parser.token( identifier );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test2()
+{
+	Parser parser;
+	parser.init();
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+
+int main()
+{
+	test0();
+	test1();
+	test2();
+	return 0;
+}
+
+#ifdef _____OUTPUT_____
+reduced start = identifier
+0
+reduced start = identifier
+parse error
+1
+parse error
+1
+#endif

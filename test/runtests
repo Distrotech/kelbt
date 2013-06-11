@@ -1,0 +1,92 @@
+#!/bin/bash
+
+#
+#   Copyright 2006 Adrian Thurston <thurston@complang.org>
+#
+
+#   This file is part of Kelbt.
+#
+#   Kelbt is free software; you can redistribute it and/or modify
+#   it under the terms of the GNU General Public License as published by
+#   the Free Software Foundation; either version 2 of the License, or
+#   (at your option) any later version.
+#
+#   Kelbt is distributed in the hope that it will be useful,
+#   but WITHOUT ANY WARRANTY; without even the implied warranty of
+#   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#   GNU General Public License for more details.
+#
+#   You should have received a copy of the GNU General Public License
+#   along with Kelbt; if not, write to the Free Software
+#   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA 
+
+[ -z "$*" ] && set -- *.kl
+
+compiler=`sed '/^#define CXX/s/#define CXX *//p;d' ../config.h`
+cflags="-Wall -O3"
+
+function test_error
+{
+	exit 1;
+}
+
+for test_case; do
+	root=${test_case%.kl};
+
+	if ! [ -f "$test_case" ]; then
+		echo "runtests: not a file: $test_case"; >&2
+		exit 1;
+	fi
+
+	ignore=`sed '/@IGNORE:/s/^.*: *//p;d' $test_case`
+	if [ "$ignore" = yes ]; then
+		continue;
+	fi
+
+	lang=`sed '/@LANG:/s/^.*: *//p;d' $test_case`
+	if [ -z "$lang" ]; then
+		lang="c++";
+	fi
+
+	kelbt=../kelbt/kelbt
+
+	expected_out=$root.exp;
+	sed '1,/_____OUTPUT_____/d;$d' $test_case > $expected_out
+
+	additional_cflags=`sed '/@CFLAGS:/s/^.*: *//p;d' $test_case`
+	[ -n "$additional_cflags" ] && cflags="$cflags $additional_cflags"
+
+	case $lang in
+		c++)
+			code_suffix=cpp;
+			compiler=g++;
+		;;
+		c)
+			code_suffix=c;
+			compiler=gcc;
+		;;
+	esac
+
+	code_src=$root.$code_suffix;
+	binary=$root.bin;
+	output=$root.out;
+
+	echo "$kelbt $test_case -o $code_src"
+	if ! $kelbt $test_case -o $code_src; then
+		test_error;
+	fi
+
+	echo "$compiler $cflags -o $binary $code_src"
+	if ! $compiler $cflags -o $binary $code_src; then
+		test_error;
+	fi
+
+	echo -n "running $binary ... ";
+	./$binary > $output;
+	if diff $expected_out $output > /dev/null; then
+		echo "passed";
+	else
+		echo "FAILED";
+		test_error;
+	fi;
+done

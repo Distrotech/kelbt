@@ -1,0 +1,109 @@
+
+#include <iostream>
+#include <stdlib.h>
+using namespace std;
+
+//#define LOG_ACTIONS
+//#define LOG_BACKTRACK
+
+struct Token { };
+struct LangEl;
+
+struct Parser
+{
+	%%{
+		parser Parser;
+
+		# Token names.
+		token number, id, dead;
+	}%%
+
+	%% write instance_data;
+
+	void init();
+	int parseLangEl( int type, const Token &tokenRef );
+	void finish();
+};
+
+%% write token_defs;
+
+%%{
+
+parser Parser;
+
+start: go
+	try { cout << "reducing start: go;" << endl; };
+
+go: divert number id dead
+	try { cout << "reducing go: divert number id dead;" << endl; };
+go: id choice1 choice2 id
+	try { cout << "reducing go: id choice1 choice2 id;" << endl; };
+
+divert: id choice1
+	try { cout << "reducing divert: id choice1;" << endl; }
+	undo { cout << "undoing divert: id choice1;" << endl; };
+
+choice1: number number
+	try { cout << "reducing choice1: number number;" << endl; };
+choice1: number
+	try { cout << "reducing choice1: number;" << endl; };
+
+choice2: number id
+	try { cout << "reducing choice2: number id;" << endl; };
+choice2: number
+	try { cout << "reducing choice2: number;" << endl; };
+
+}%%
+
+%%{
+	write types;
+	write data;
+}%%
+
+
+void Parser::init()
+{
+	%% write init;
+}
+
+void Parser::finish()
+{
+	%% write finish;
+}
+
+int Parser::parseLangEl( int type, const Token &tokenRef )
+{
+	const Token *token = &tokenRef;
+	%% write exec;
+	return errCount == 0 ? 0 : -1;
+}
+
+
+void test0()
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	parser.parseLangEl( id, token );
+	parser.parseLangEl( number, token );
+	parser.parseLangEl( number, token );
+	parser.parseLangEl( id, token );
+	parser.parseLangEl( Parser_tk_eof, token );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+
+int main()
+{
+	test0();
+}
+
+#ifdef _____OUTPUT_____
+reducing choice1: number;
+reducing divert: id choice1;
+undoing divert: id choice1;
+reducing choice2: number;
+reducing go: id choice1 choice2 id;
+reducing start: go;
+0
+#endif

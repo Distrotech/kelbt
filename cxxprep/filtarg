@@ -1,0 +1,23 @@
+#!/bin/bash
+
+pn=`dirname $0`
+
+for arg; do
+	newArg=`echo "$arg" | 
+	sed '
+		s/^-W[-\/,.a-zA-Z_0-9]*//g
+		s/^-c//g
+		s/^-g//g
+		s/^-pipe//g
+		s/^-pthread//g
+		s/^-pedantic//g
+		s/^-f[a-zA-Z0-9-]*//g
+	'`
+	filtArgs="$filtArgs $newArg"
+done
+
+echo
+echo $filtArgs
+echo
+
+$pn/cxxprep $filtArgs

@@ -1,0 +1,25 @@
+#!/bin/bash
+#
+
+[ `dirname $0` != '.' ] && cd `dirname $0`
+
+out1=`mktemp -t cppnorm-test-XXXXXX`
+out2=`mktemp -t cppnorm-test-XXXXXX`
+
+for fn in input??.cpp; 
+	do echo $fn; 
+	../cxxprep -n -t `basename $fn` < $fn > $out1
+	../undo < $out1 > $out2
+	diff -u $out1 ${fn/input/output}
+	diff -u $out2 ${fn}
+done
+
+rm $out1
+rm $out2
+
+shopt -s nullglob
+for d in data-*; do
+	cd $d
+	./run-tests
+	cd ..
+done

@@ -1,0 +1,3005 @@
+/*
+ *  Copyright 2004-2006 Adrian Thurston <thurston@complang.org>
+ */
+
+/*  This file is part of C++ Pre-Parser.
+ *
+ *  C++ Pre-Parser is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ * 
+ *  C++ Pre-Parser is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ * 
+ *  You should have received a copy of the GNU General Public License
+ *  along with C++ Pre-Parser; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA 
+ */
+
+#include "parser.h"
+#include "names.h"
+#include <iostream>
+#include <assert.h>
+
+using namespace std;
+
+Buffer preToken;
+
+struct Parser_Lel_template_argument;
+
+void setNameData( NameData &nameData, LangEl *from );
+void initNameData( NameData &nameData );
+void makeTypeList( TypeList &typeList, Parser_Lel_template_argument *last );
+
+%%{
+
+parser Parser;
+
+token translate {
+	/* Translate names. Take them from id to whatever they are. */
+	if ( input->type == TK_Lookup ) {
+		if ( input->user.token.qual )
+			lookupQualified( input );
+		else 
+			lookupInStack( input );
+	}
+} 
+undo {
+	/* Undo the translation of names. Take them back to id. */
+	switch ( input->type ) {
+	case TK_UnknownId:
+	case TK_Identifier:
+	case TK_NamespaceName:
+	case TK_ClassName:
+	case TK_TemplClassName:
+	case TK_EnumName:
+	case TK_TypedefName:
+	case TK_TemplateId:
+		input->type = TK_Lookup;
+		break;
+	}
+}
+final {
+	writeToken( lel );
+};
+
+include "parser.kh";
+
+# Start symbol.
+start: declaration_rep;
+
+#
+# Class Names
+#
+
+nonterm class_name 
+{
+	NameData nameData;
+};
+
+class_name: 
+	TK_ClassName 
+	try {
+		setNameData( $$->nameData, @1 );
+	};
+class_name: 
+	TK_TemplClassName 
+	try {
+		setNameData( $$->nameData, @1 );
+	};
+class_name: 
+	TK_TemplClassName templ_arg_open template_argument_list_opt templ_arg_close
+	try {
+		setNameData( $$->nameData, @1 );
+
+		TypeList typeList;
+		makeTypeList( typeList, $3->last );
+
+		/* Look for a specialization, otherwise use the base template class. */
+		Object *specObj = findSpecCovers( $1->object, &typeList );
+		if ( specObj != 0 ) {
+			#ifdef LOG_REDUCE
+			cerr << "found specialization" << endl;
+			#endif
+			$$->nameData.object = specObj;
+		}
+	};
+
+templ_arg_open: '<' 
+	try {
+		qualNs.push(0);
+		$1->outType = TK_TemplArgOpen;
+	}
+	undo {
+		qualNs.pop();
+		$1->outType = 0;
+	};
+
+nonterm templ_arg_close
+{
+	Object *oldQualNs;
+};
+
+templ_arg_close: '>'
+	try {
+		$$->oldQualNs = qualNs.pop();
+		$1->outType = TK_TemplArgClose;
+	}
+	undo {
+		qualNs.push( $$->oldQualNs );
+		$1->outType = 0;
+	};
+
+#
+# Name qualfication
+#
+
+root_qual_opt: ;
+root_qual_opt: TK_NameSep;
+
+nested_name_specifier_opt: 
+    nested_name_specifier_opt qualifying_name TK_NameSep
+    designated_qualifying_name TK_NameSep;
+nested_name_specifier_opt: nested_name_specifier_opt qualifying_name TK_NameSep;
+nested_name_specifier_opt: ;
+
+nested_name_specifier: nested_name_specifier designated_qualifying_name TK_NameSep;
+nested_name_specifier: nested_name_specifier qualifying_name TK_NameSep;
+nested_name_specifier: qualifying_name TK_NameSep;
+
+nonterm qualifying_name
+{
+	Object *oldQualNs;
+};
+
+qualifying_name: 
+	class_name 
+	try {
+		$$->oldQualNs = qualNs.top();
+		qualNs.set( $1->nameData.object );
+	}
+	undo {
+		qualNs.set( $$->oldQualNs );
+	};
+
+qualifying_name:
+	TK_NamespaceName 
+	try {
+		$$->oldQualNs = qualNs.top();
+		qualNs.set( $1->object );
+	}
+	undo {
+		qualNs.set( $$->oldQualNs );
+	};
+
+qualifying_name: 
+	TK_TypedefName 
+	try {
+		$$->oldQualNs = qualNs.top();
+		Object *pointsTo = $1->object->objType != 0 ? $1->object->objType->getObject() : 0;
+		qualNs.set( pointsTo != 0 ? pointsTo : $1->object );
+	}
+	undo {
+		qualNs.set( $$->oldQualNs );
+	};
+
+nonterm designated_qualifying_name
+{
+	Object *oldQualNs;
+};
+
+designated_qualifying_name: 
+	KW_Template TK_Identifier 
+	try {
+		/* FIXME: nulling qualNs is not the right thing to do here. */
+		cerr << "FIXME: THIS IS NOT THE RIGHT THING TO DO" << endl;
+		$$->oldQualNs = qualNs.top();
+		qualNs.set( 0 );
+	}
+	undo {
+		qualNs.set( $$->oldQualNs );
+	};
+
+designated_qualifying_name: 
+	KW_Template TK_Identifier 
+		templ_arg_open template_argument_list_opt templ_arg_close
+	try {
+		/* FIXME: nulling qualNs is not the right thing to do here. */
+		cerr << "FIXME: THIS IS NOT THE RIGHT THING TO DO" << endl;
+		$$->oldQualNs = qualNs.top();
+		qualNs.set( 0 );
+	}
+	undo {
+		qualNs.set( $$->oldQualNs );
+	};
+
+nonterm qual_reset
+{
+	Object *qualObj;
+};
+
+qual_reset: 
+	try {
+		$$->qualObj = qualNs.top();
+		qualNs.set(0);
+	}
+	undo {
+		qualNs.set( $$->qualObj );
+	};
+
+
+#
+# Id Expression
+#
+
+nonterm id_expression 
+{
+	NameData nameData;
+};
+
+id_expression: 
+	root_qual_opt nested_name_specifier_opt TK_UnknownId qual_reset
+	try {
+		setNameData( $$->nameData, @3 );
+		$$->nameData.qualNs = $4->qualObj;
+	};
+id_expression: 
+	root_qual_opt nested_name_specifier_opt TK_Identifier qual_reset
+	try {
+		setNameData( $$->nameData, @3 );
+		$$->nameData.qualNs = $4->qualObj;
+	};
+id_expression: 
+	root_qual_opt nested_name_specifier_opt operator_function_id qual_reset
+	try {
+		$$->nameData.id = 0;
+		$$->nameData.object = 0;
+		$$->nameData.langEl = 0;
+		$$->nameData.qualNs = $4->qualObj;
+	};
+id_expression: 
+	root_qual_opt nested_name_specifier_opt conversion_function_id qual_reset
+	try {
+		$$->nameData.id = 0;
+		$$->nameData.object = 0;
+		$$->nameData.langEl = 0;
+		$$->nameData.qualNs = $4->qualObj;
+	};
+id_expression: 
+	root_qual_opt nested_name_specifier_opt '~' class_name qual_reset
+	try {
+		$$->nameData = $4->nameData;
+		$$->nameData.qualNs = $5->qualObj;
+	};
+id_expression: 
+	root_qual_opt nested_name_specifier_opt template_id qual_reset
+	try {
+		$$->nameData = $3->nameData;
+		$$->nameData.qualNs = $4->qualObj;
+	};
+
+nonterm template_id 
+{
+	NameData nameData;
+};
+
+template_id: 
+	TK_TemplateId templ_arg_open template_argument_list_opt templ_arg_close
+	try {
+		setNameData( $$->nameData, @1 );
+	};
+
+template_id: 
+	TK_TemplateId
+	try {
+		setNameData( $$->nameData, @1 );
+	};
+
+
+#
+# Expressions
+#
+literal: TK_IntegerDecimal;
+literal: TK_IntegerOctal;
+literal: TK_IntegerHex;
+literal: TK_SingleLit;
+literal: TK_Float;
+literal: double_lit_list;
+literal: KW_True;
+literal: KW_False;
+
+double_lit_list: TK_DoubleLit double_lit_list;
+double_lit_list: TK_DoubleLit;
+
+nonterm primary_expression 
+{
+	Type *type;
+};
+
+primary_expression: literal try { $$->type = 0; };
+primary_expression: KW_This try { $$->type = 0; };
+primary_expression: '(' expression ')' try { $$->type = 0; };
+primary_expression: id_expression 
+	try { 
+		$$->type = $1->nameData.object != 0 ? $1->nameData.object->objType : 0;
+	};
+
+# This is an GNU extension.
+primary_expression: '(' '{' statement_rep '}' ')';
+
+nonterm postfix_expression
+{
+	Type *type;
+};
+
+postfix_expression: primary_expression 
+	try { $$->type = $1->type; };
+
+postfix_expression: postfix_expression '[' expression ']'
+	try { $$->type = $1->type; };
+	
+postfix_expression: postfix_expression '(' expression_opt ')'
+	try { $$->type = $1->type; };
+
+postfix_expression: function_style_type_conv '(' expression_opt ')'
+	try { $$->type = 0; };
+
+postfix_expression: member_request_expr dot_arrow id_expression qual_reset
+	try { $$->type = 0; };
+
+postfix_expression: member_request_expr dot_arrow pseudo_destructor_call qual_reset
+	try { $$->type = 0; };
+
+postfix_expression: postfix_expression TK_PlusPlus
+	try { $$->type = 0; };
+
+postfix_expression: postfix_expression TK_MinusMinus
+	try { $$->type = 0; };
+
+postfix_expression: 
+	KW_DynamicCast templ_arg_open type_id templ_arg_close '(' expression ')'
+	try { $$->type = 0; };
+
+postfix_expression: 
+	KW_StaticCast templ_arg_open type_id templ_arg_close '(' expression ')'
+	try { $$->type = 0; };
+
+postfix_expression: 
+	KW_ReinterpretCast templ_arg_open type_id templ_arg_close '(' expression ')'
+	try { $$->type = 0; };
+
+postfix_expression: KW_ConstCast templ_arg_open type_id templ_arg_close '(' expression ')'
+	try { $$->type = 0; };
+
+postfix_expression: KW_Typeid '(' expression ')'
+	try { $$->type = 0; };
+
+postfix_expression: KW_Typeid '(' type_id ')'
+	try { $$->type = 0; };
+
+pseudo_destructor_call: 
+	root_qual_opt nested_name_specifier_opt '~' pdc_type_name qual_reset;
+
+nonterm member_request_expr
+{
+	Object *oldQualNs;
+};
+
+member_request_expr: postfix_expression 
+	try {
+		/* FIXME: If no proper type is found, we must fail. */
+		#ifdef LOG_REDUCE
+		cerr << "setting member request scope" << endl;
+		#endif
+		$$->oldQualNs = qualNs.top();
+		qualNs.set( $1->type != 0 ? $1->type->getObject() : 0 );
+	}
+	undo {
+		qualNs.set( $$->oldQualNs );
+	};
+
+
+dot_arrow: TK_Arrow;
+dot_arrow: '.';
+
+pdc_type_name: TK_EnumName;
+pdc_type_name: TK_TypedefName;
+
+function_style_type_conv: simple_type_specifier;
+
+unary_expression: postfix_expression;
+unary_expression: TK_PlusPlus cast_expression;
+unary_expression: TK_MinusMinus cast_expression;
+unary_expression: unary_operator cast_expression;
+unary_expression: KW_Sizeof '(' type_id ')';
+unary_expression: KW_Sizeof unary_expression;
+unary_expression: new_expression;
+unary_expression: delete_expression;
+
+unary_operator: '*';
+unary_operator: '&';
+unary_operator: '+';
+unary_operator: '-';
+unary_operator: '!';
+unary_operator: '~';
+
+new_expression: root_qual_opt KW_New new_type_id new_initializer_opt qual_reset;
+new_expression: root_qual_opt KW_New new_placement new_type_id new_initializer_opt qual_reset;
+new_expression: root_qual_opt KW_New '(' type_id ')' new_initializer_opt qual_reset;
+new_expression: root_qual_opt KW_New new_placement '(' type_id ')' new_initializer_opt qual_reset;
+
+new_placement: '(' expression ')';
+
+new_type_id: necs_type_specifier_seq new_declarator_opt;
+
+new_declarator: direct_new_declarator;
+new_declarator: ptr_operator_seq direct_new_declarator;
+new_declarator: ptr_operator_seq;
+
+new_declarator_opt: new_declarator;
+new_declarator_opt: ;
+
+direct_new_declarator: '[' expression ']';
+direct_new_declarator: direct_new_declarator '[' constant_expression ']';
+
+new_initializer: '(' expression_opt ')';
+
+new_initializer_opt: new_initializer;
+new_initializer_opt: ;
+
+delete_expression: root_qual_opt KW_Delete cast_expression qual_reset;
+delete_expression: root_qual_opt KW_Delete '[' ']' cast_expression qual_reset;
+
+cast_expression: unary_expression;
+cast_expression: '(' type_id ')' cast_expression;
+
+pm_expression: pm_expression TK_ArrowStar cast_expression;
+pm_expression: pm_expression TK_DotStar cast_expression;
+pm_expression: cast_expression;
+
+multiplicative_expression: multiplicative_expression '*' pm_expression;
+multiplicative_expression: multiplicative_expression '/' pm_expression;
+multiplicative_expression: multiplicative_expression '%' pm_expression;
+multiplicative_expression: pm_expression;
+
+additive_expression: additive_expression '+' multiplicative_expression;
+additive_expression: additive_expression '-' multiplicative_expression;
+additive_expression: multiplicative_expression;
+
+shift_expression: shift_expression shift_left additive_expression;
+shift_expression: shift_expression shift_right additive_expression;
+shift_expression: additive_expression;
+
+relational_expression: relational_expression '<' shift_expression;
+relational_expression: relational_expression '>' shift_expression;
+relational_expression: relational_expression lt_eq shift_expression;
+relational_expression: relational_expression gt_eq shift_expression;
+relational_expression: shift_expression;
+
+equality_expression: equality_expression TK_EqualsEquals relational_expression;
+equality_expression: equality_expression TK_NotEquals relational_expression;
+equality_expression: relational_expression;
+
+and_expression: and_expression '&' equality_expression;
+and_expression: equality_expression;
+
+exclusive_or_expression: exclusive_or_expression '^' and_expression;
+exclusive_or_expression: and_expression;
+
+inclusive_or_expression: inclusive_or_expression '|' exclusive_or_expression;
+inclusive_or_expression: exclusive_or_expression;
+
+logical_and_expression: logical_and_expression TK_AndAnd inclusive_or_expression;
+logical_and_expression: inclusive_or_expression;
+
+logical_or_expression: logical_or_expression TK_OrOr logical_and_expression;
+logical_or_expression: logical_and_expression;
+
+conditional_expression: logical_or_expression;
+conditional_expression: 
+	logical_or_expression '?' expression ':' assignment_expression;
+
+assignment_expression: conditional_expression;
+assignment_expression: logical_or_expression assignment_op assignment_expression;
+assignment_expression: throw_expression;
+
+assignment_op: '=';
+assignment_op: TK_MultAssign;
+assignment_op: TK_DivAssign;
+assignment_op: TK_PercentAssign;
+assignment_op: TK_PlusAssign;
+assignment_op: TK_MinusAssign;
+assignment_op: TK_ShiftRightAssign;
+assignment_op: TK_ShiftLeftAssign;
+assignment_op: TK_AmpAssign;
+assignment_op: TK_CaretAssign;
+assignment_op: TK_BarAssign;
+
+expression: expression ',' assignment_expression;
+expression: assignment_expression;
+
+expression_opt: expression;
+expression_opt: ;
+
+constant_expression: conditional_expression;
+
+constant_expression_opt: constant_expression;
+constant_expression_opt: ;
+
+#
+# Statements
+#
+
+statement_rep: statement_rep statement;
+statement_rep: ;
+
+statement: declaration_statement commit;
+statement: labeled_statement commit;
+statement: expression_statement commit;
+statement: compound_statement commit;
+statement: selection_statement commit;
+statement: iteration_statement commit;
+statement: jump_statement commit;
+statement: try_block commit;
+
+labeled_statement: label_id ':' statement;
+labeled_statement: KW_Case constant_expression ':' statement;
+labeled_statement: KW_Default ':' statement;
+
+label_id: TK_UnknownId;
+label_id: TK_Identifier;
+label_id: TK_ClassName;
+label_id: TK_TemplClassName;
+label_id: TK_NamespaceName;
+label_id: TK_TypedefName;
+label_id: TK_EnumName;
+label_id: TK_TemplateId;
+
+compound_statement: 
+	'{' compound_begin statement_rep compound_end '}';
+
+compound_begin:
+	try {
+		Object *newCompound = new Object;
+		lookupNs.top()->push( newCompound );
+		declNs.push( newCompound );
+	}
+	undo {
+		declNs.pop();
+		lookupNs.top()->pop();
+	};
+
+nonterm compound_end
+{
+	Object *lookupNsTop;
+	Object *declNsTop;
+};
+
+compound_end:
+	try {
+		$$->lookupNsTop = lookupNs.top()->pop();
+		$$->declNsTop = declNs.pop();
+	}
+	undo {
+		declNs.push( $$->declNsTop );
+		lookupNs.top()->push( $$->declNsTop );
+	};
+
+selection_statement: KW_If '(' condition ')' statement elseif_clauses else_clause;
+selection_statement: KW_Switch '(' condition ')' statement;
+
+elseif_clauses: elseif_clauses KW_Else KW_If '(' condition ')' statement;
+elseif_clauses: ;
+
+else_clause: KW_Else statement;
+else_clause: ;
+
+iteration_statement: 
+	KW_While '(' condition ')' statement;
+iteration_statement: 
+	KW_Do statement KW_While '(' expression ')' ';';
+iteration_statement: 
+	KW_For '(' for_init_statement condition_opt ';' expression_opt ')' statement;
+
+jump_statement: KW_Break ';';
+jump_statement: KW_Continue ';';
+jump_statement: KW_Return expression_opt ';';
+jump_statement: KW_Goto TK_Identifier ';';
+
+for_init_statement: expression_statement;
+for_init_statement: stmt_block_declaration_forms ';';
+
+condition: expression;
+condition: 
+	type_specifier_seq declarator '=' assignment_expression;
+
+condition_opt: condition;
+condition_opt: ;
+
+expression_statement: expression ';';
+expression_statement: ';';
+
+declaration_statement: stmt_block_declaration;
+
+stmt_block_declaration: stmt_block_declaration_forms ';';
+stmt_block_declaration: using_declaration;
+stmt_block_declaration: using_directive;
+
+stmt_block_declaration_forms: 
+	declaration_start decl_specifier_mult_seq init_declarator_list_opt declaration_end;
+
+stmt_block_declaration_forms: 
+	declaration_start decl_specifier_sing decl_specifier_mult_rep 
+	init_declarator_list_opt declaration_end;
+
+stmt_block_declaration_forms: 
+	declaration_start decl_specifier_mult_seq decl_specifier_sing 
+	decl_specifier_mult_rep init_declarator_list_opt declaration_end;
+
+#
+# Declarations
+#
+
+declaration_rep: declaration_rep declaration;
+declaration_rep: ;
+
+declaration: block_declaration commit;
+declaration: function_definition commit;
+declaration: template_declaration commit;
+declaration: explicit_instantiation commit;
+declaration: explicit_specialization commit;
+declaration: linkage_specification commit;
+declaration: namespace_definition commit;
+
+block_declaration: simple_declaration;
+block_declaration: using_declaration;
+block_declaration: using_directive;
+
+simple_declaration: simple_declaration_forms ';';
+
+simple_declaration_forms: 
+	declaration_start init_declarator_list_opt declaration_end;
+
+simple_declaration_forms: 
+	declaration_start decl_specifier_mult_seq init_declarator_list_opt declaration_end;
+
+simple_declaration_forms: 
+	declaration_start decl_specifier_sing decl_specifier_mult_rep 
+	init_declarator_list_opt declaration_end;
+
+simple_declaration_forms: 
+	declaration_start decl_specifier_mult_seq decl_specifier_sing decl_specifier_mult_rep 
+	init_declarator_list_opt declaration_end;
+
+# This non terminal sets up fresh local variables that will be used by the declaraion.
+# This is necessary since declarations may be nested.
+declaration_start:
+	try {
+		/* Push fresh variables for the declaration. */
+		declarationData.push( DeclarationData() );
+		declarationData.top().init();
+		declarationData.top().type = unknownType;
+		declarationData.top().isTemplate = templDecl.top();
+
+		/* Reset the template declaration tracking var. */
+		templDecl.push(false);
+	}
+	undo {
+		templDecl.pop();
+		declarationData.pop();
+	};
+
+nonterm declaration_end
+{
+	bool templDeclVal;
+	DeclarationData declarationData;
+};
+
+# Closes off a declaration. Frees the local variables used.
+declaration_end:
+	try {
+		$$->templDeclVal = templDecl.pop();
+		$$->declarationData = declarationData.pop();
+	}
+	undo {
+		templDecl.push( $$->templDeclVal );
+		declarationData.push( $$->declarationData );
+	};
+
+decl_specifier_sing: 
+	type_specifier_sing 
+	try {
+		declarationData.top().type = $1->type;
+	};
+
+decl_specifier_mult_rep: decl_specifier_mult_rep decl_specifier_mult;
+decl_specifier_mult_rep: ;
+
+decl_specifier_mult_seq: decl_specifier_mult_seq decl_specifier_mult;
+decl_specifier_mult_seq: decl_specifier_mult;
+
+decl_specifier_mult: type_specifier_mult;
+decl_specifier_mult: storage_class_specifier;
+decl_specifier_mult: function_specifier;
+decl_specifier_mult: KW_Friend
+	try {
+		declarationData.top().isFriend = true;
+	};
+decl_specifier_mult: KW_Typedef
+	try { 
+		declarationData.top().isTypedef = true;
+	};
+
+storage_class_specifier: KW_Auto;
+storage_class_specifier: KW_Register;
+storage_class_specifier: KW_Static;
+storage_class_specifier: KW_Extern;
+storage_class_specifier: KW_Mutable;
+
+function_specifier: KW_Inline;
+function_specifier: KW_Virtual;
+function_specifier: KW_Explicit;
+
+nonterm type_specifier_seq
+{
+	Type *type;
+	Object *object;
+};
+
+type_specifier_seq: 
+	type_specifier_mult_seq type_specifier_sing type_specifier_mult_rep
+	try {
+		$$->type = $2->type;
+		$$->object = $2->object;
+	};
+type_specifier_seq: 
+	type_specifier_sing type_specifier_mult_rep
+	try {
+		$$->type = $1->type;
+		$$->object = $1->object;
+	};
+
+nonterm type_specifier_sing
+{
+	Type *type;
+	Object *object;
+};
+
+type_specifier_sing: 
+	simple_type_specifier
+	try {
+		$$->type = $1->type;
+		$$->object = $1->object;
+	};
+type_specifier_sing: 
+	class_specifier
+	try {
+		$$->type = $1->object->objType;
+		$$->object = $1->object;
+	};
+type_specifier_sing: 
+	enum_specifier
+	try {
+		$$->type = $1->object->objType;
+		$$->object = $1->object;
+	};
+type_specifier_sing: 
+	elaborated_type_specifier
+	try {
+		// FIXME: Should always return a type here.
+		$$->type = ($1->object != 0) ? $1->object->objType : 0;
+		$$->object = $1->object;
+	};
+
+# Type specifier sequence without enum specifier or class specifier.
+necs_type_specifier_seq: 
+	type_specifier_mult_seq necs_type_specifier_sing type_specifier_mult_rep;
+necs_type_specifier_seq: 
+	necs_type_specifier_sing type_specifier_mult_rep;
+
+# Type specifier singular without enum specifier or class specifier.
+necs_type_specifier_sing: simple_type_specifier;
+necs_type_specifier_sing: elaborated_type_specifier;
+
+type_specifier_mult_rep: type_specifier_mult_rep type_specifier_mult;
+type_specifier_mult_rep: ;
+type_specifier_mult_seq: type_specifier_mult_seq type_specifier_mult;
+type_specifier_mult_seq: type_specifier_mult;
+
+type_specifier_mult: cv_qualifier;
+
+cv_qualifier: KW_Const;
+cv_qualifier: KW_Volatile;
+cv_qualifier: KW_Restrict;
+
+cv_qualifier_rep: cv_qualifier_rep cv_qualifier;
+cv_qualifier_rep: ;
+
+nonterm simple_type_specifier
+{
+	Type *type;
+	Object *object;
+};
+
+simple_type_specifier: 
+	simple_type_specifier_name
+	try {
+		$$->type = $1->object->objType;
+		$$->object = $1->object;
+	};
+simple_type_specifier: 
+	simple_type_specifier_kw_seq
+	try {
+		$$->type = $1->type;
+		$$->object = 0;
+	};
+simple_type_specifier: 
+	KW_Typename root_qual_opt nested_name_specifier type_name qual_reset
+	try {
+		$$->type = $4->nameData.object->objType;
+		$$->object = $4->nameData.object;
+	};
+simple_type_specifier: 
+	KW_Typename root_qual_opt nested_name_specifier TK_Identifier qual_reset
+	try {
+		$$->type = unknownType;
+		$$->object = 0;
+	};
+simple_type_specifier: 
+	KW_Typename root_qual_opt nested_name_specifier TK_UnknownId qual_reset
+	try {
+		$$->type = unknownType;
+		$$->object = 0;
+	};
+simple_type_specifier:
+	KW_Typeof '(' TK_Identifier ')'
+	try {
+		$$->type = unknownType;
+		$$->object = 0;
+	};
+
+nonterm simple_type_specifier_name
+{
+	Object *object;
+};
+
+simple_type_specifier_name: 
+	qual_type_name
+	try {
+		$$->object = $1->object;
+	};
+
+nonterm simple_type_specifier_kw_seq
+{
+	Type *type;
+};
+
+simple_type_specifier_kw_seq: 
+	simple_type_specifier_kw_seq simple_type_specifier_kw
+	try {
+		$$->type = addInProp( $1->type, $2->prop );
+	};
+simple_type_specifier_kw_seq: 
+	simple_type_specifier_kw
+	try {
+		$$->type = newType( $1->prop );
+	};
+
+nonterm simple_type_specifier_kw 
+{
+	Type::Property prop;
+};
+
+simple_type_specifier_kw: KW_Void try { $$->prop = Type::Void; };
+simple_type_specifier_kw: KW_Char try { $$->prop = Type::Char; };
+simple_type_specifier_kw: KW_WcharT try { $$->prop = Type::Wchar_t; };
+simple_type_specifier_kw: KW_Bool try { $$->prop = Type::Bool; };
+simple_type_specifier_kw: KW_Int try { $$->prop = Type::Int; };
+simple_type_specifier_kw: KW_Float try { $$->prop = Type::Float; };
+simple_type_specifier_kw: KW_Double try { $$->prop = Type::Double; };
+simple_type_specifier_kw: KW_Short try { $$->prop = Type::Short; };
+simple_type_specifier_kw: KW_Long try { $$->prop = Type::Long; };
+simple_type_specifier_kw: KW_Signed try { $$->prop = Type::Signed; };
+simple_type_specifier_kw: KW_Unsigned try { $$->prop = Type::Unsigned; };
+
+nonterm qual_type_name
+{
+	Object *object;
+};
+
+qual_type_name: 
+	root_qual_opt nested_name_specifier_opt type_name qual_reset 
+	try {
+		$$->object = $3->nameData.object;
+	};
+
+# The type is in nameData.object->type.
+nonterm type_name
+{
+	NameData nameData;
+};
+
+type_name: 
+	class_name
+	try {
+		$$->nameData = $1->nameData;
+	};
+type_name: 
+	TK_EnumName
+	try {
+		setNameData( $$->nameData, @1 );
+	};
+type_name: 
+	TK_TypedefName
+	try {
+		setNameData( $$->nameData, @1 );
+	};
+
+type named_object_type
+{
+	Object *object;
+	Type *type;
+};
+
+nonterm elaborated_type_specifier
+{
+	Object *object;
+	bool created;
+};
+
+# NOTE: the typename case is moved to simple type specifier
+# to take advantage of its conflict resolution.
+elaborated_type_specifier: 
+	class_key nested_name_specifier_opt class_head_name qual_reset
+	try {
+		Object *qualNs = $4->qualObj;
+		char *id = $3->nameData.id;
+		$$->created = false;
+
+		/* If we are in friend declaration we don't need a new class object. */
+		$$->object = 0;
+
+		/* Get the ns the class is declared in. */
+		Object *parentNs = qualNs != 0 ? qualNs : declNs.top();
+
+		/* Look for the class in the given scope. */
+		$$->object = parentNs->findClass( id );
+		if ( $$->object == 0 )
+			$$->object = parentNs->findTemplateClass( id );
+
+		if ( $$->object == 0 && !declarationData.top().isFriend ) {
+			$$->created = true;
+			Object::Type bnsType = declarationData.top().isTemplate ? 
+					Object::TemplateClassType : Object::ClassType;
+			$$->object = new Object( bnsType, id, *lookupNs.top() );
+			$$->object->objType = new Type( $$->object );
+			parentNs->insertObject( id, $$->object );
+		}
+		
+		$3->nameData.langEl->user.token.outType = TK_ClassName;
+	}
+	undo {
+		/* Get the ns the class is declared in. */
+		Object *qualNs = $4->qualObj;
+		Object *parentNs = qualNs != 0 ? qualNs : declNs.top();
+
+		if ( $$->created )
+			parentNs->removeObject( $$->object );
+
+		$3->nameData.langEl->user.token.outType = 0;
+	};
+
+elaborated_type_specifier: 
+	class_key nested_name_specifier_opt TK_TemplClassName 
+		templ_arg_open template_argument_list_opt templ_arg_close 
+		qual_reset
+	try {
+		/* FIXME: Lookup type specialization. */
+		$$->object = $3->object;
+	};
+
+elaborated_type_specifier: 
+	KW_Enum nested_name_specifier_opt enum_head_name qual_reset
+	try {
+		Object *qualNs = $4->qualObj;
+		char *id = $3->data;
+
+		/* If we are in friend declaration we don't need a new enum object. */
+		$$->object = 0;
+		if ( ! declarationData.top().isFriend ) {
+			/* Get the ns the enum is declared in. */
+			Object *parentNs = qualNs != 0 ? qualNs : declNs.top();
+
+			/* Look for the enum in the given scope. */
+			$$->object = parentNs->findEnum( id );
+			if ( $$->object == 0 ) {
+				$$->created = true;
+				$$->object = new Object( Object::EnumType, id );
+				$$->object->objType = new Type( $$->object );
+				parentNs->insertObject( id, $$->object );
+			}
+		}
+	} 
+	undo {
+		/* Get the ns the class is declared in. */
+		Object *qualNs = $4->qualObj;
+		Object *parentNs = qualNs != 0 ? qualNs : declNs.top();
+
+		if ( $$->created )
+			parentNs->removeObject( $$->object );
+	};
+
+namespace_definition: named_namespace_definition;
+namespace_definition: unnamed_namespace_definition;
+
+named_namespace_definition: original_namespace_definition;
+named_namespace_definition: extension_namespace_definition;
+
+using_declaration: 
+	KW_Using id_expression ';'
+	try {
+		Object *object = $2->nameData.object;
+		if ( object != 0 && object->data != 0 )
+			declNs.top()->insertObject( object->data, object );
+	}
+	undo {
+		Object *object = $2->nameData.object;
+		if ( object != 0 && object->data != 0 )
+			declNs.top()->removeObject( object );
+	};
+
+using_declaration: 
+	KW_Using type_id ';'
+	try {
+		Object *object = $2->object;
+		if ( object != 0 && object->data != 0 )
+			declNs.top()->insertObject( object->data, object );
+	}
+	undo {
+		Object *object = $2->object;
+		if ( object != 0 && object->data != 0 )
+			declNs.top()->removeObject( object );
+	};
+
+using_directive: 
+	KW_Using KW_Namespace root_qual_opt nested_name_specifier_opt 
+		TK_NamespaceName qual_reset ';'
+	try {
+		/* This is a simple, incomplete guard against cycles in the graph of
+		 * using namespaces. A more sophisticated and complete guard would look
+		 * for longer cycles as well. Note that even gcc 3.3.5 does not bother. */
+		if ( declNs.top() != $5->object )
+			declNs.top()->nsChildren.append( $5->object );
+	}
+	undo {
+		if ( declNs.top() != $5->object ) {
+			int tail = declNs.top()->nsChildren.length();
+			declNs.top()->nsChildren.remove( tail-1 );
+		}
+	};
+
+linkage_specification: KW_Extern TK_DoubleLit '{' declaration_rep '}';
+linkage_specification: KW_Extern TK_DoubleLit declaration;
+
+#
+# Original namespace definition
+#
+original_namespace_definition:
+	orig_namespace_def_name '{' declaration_rep namespace_end '}';
+
+orig_namespace_def_name: 
+	KW_Namespace TK_UnknownId
+	try {
+		Object *nspace = new Object( Object::NamespaceType, 
+				$2->data, *lookupNs.top() );
+		curNamespace.top()->insertObject( $2->data, nspace );
+		curNamespace.push( nspace );
+		lookupNs.top()->push( nspace );
+		declNs.push( nspace );
+	}
+	undo {
+		Object *nspace = curNamespace.pop();
+		curNamespace.top()->removeObject( nspace );
+		lookupNs.top()->pop();
+		declNs.pop();
+	};
+
+type named_object
+{
+	Object *object;
+};
+
+nonterm namespace_end uses named_object;
+
+namespace_end:
+	try {
+		/* Pop the current namespace. */
+		$$->object = curNamespace.pop();
+		lookupNs.top()->pop();
+		declNs.pop();
+	}
+	undo {
+		declNs.push( $$->object );
+		lookupNs.top()->push( $$->object );
+		curNamespace.push( $$->object );
+	};
+
+#
+# Extension namespace definition
+#
+extension_namespace_definition: 
+	ext_namespace_def_name '{' declaration_rep namespace_end '}';
+
+ext_namespace_def_name: 
+	KW_Namespace TK_NamespaceName
+	try {
+		Object *nspace = $2->object;
+		curNamespace.push( nspace );
+		lookupNs.top()->push( nspace );
+		declNs.push( nspace );
+	}
+	undo {
+		curNamespace.pop();
+		lookupNs.top()->pop();
+		declNs.pop();
+	};
+
+#
+# Unnamed namespace definition
+#
+unnamed_namespace_definition:
+	unnamed_namespace_def_name '{' declaration_rep namespace_end '}';
+
+unnamed_namespace_def_name: 
+	KW_Namespace
+	try {
+		Object *nspace = new Object( Object::NamespaceType, 0, *lookupNs.top() );
+		curNamespace.push( nspace );
+		lookupNs.top()->push( nspace );
+		declNs.push( nspace );
+	} 
+	undo {
+		curNamespace.pop();
+		lookupNs.top()->pop();
+		declNs.pop();
+	};
+
+#
+# Enumerations
+#
+
+nonterm enum_specifier uses named_object_type;
+
+enum_specifier: 
+	KW_Enum nested_name_specifier_opt enum_head_name qual_reset '{' enumerator_list_opt '}'
+	try {
+		/* FIXME: enum may exist already. */
+		char *id = $3->data;
+		$$->object = new Object( Object::EnumType, id );
+		$$->object->objType = new Type( $$->object );
+		declNs.top()->insertObject( id, $$->object );
+	} 
+	undo {
+		declNs.top()->removeObject( $$->object );
+	};
+
+enum_specifier: 
+	KW_Enum '{' enumerator_list_opt '}'
+	try {
+		$$->object = new Object( Object::EnumType, 0 );
+		$$->object->objType = new Type( $$->object );
+	};
+
+nonterm enum_head_name 
+{
+	char *data;
+};
+
+enum_head_name: 
+	TK_ClassName
+	try { 
+		$$->data = $1->data;
+	};
+enum_head_name: 
+	TK_TemplClassName
+	try { 
+		$$->data = $1->data;
+	};
+enum_head_name: 
+	TK_NamespaceName
+	try { 
+		$$->data = $1->data;
+	};
+enum_head_name: 
+	TK_TypedefName
+	try {
+		$$->data = $1->data;
+	};
+enum_head_name:
+	TK_EnumName
+	try {
+		$$->data = $1->data;
+	};
+enum_head_name: 
+	TK_Identifier
+	try {
+		$$->data = $1->data;
+	};
+enum_head_name: 
+	TK_TemplateId
+	try {
+		$$->data = $1->data;
+	};
+enum_head_name: 
+	TK_UnknownId
+	try {
+		$$->data = $1->data;
+	};
+
+enumerator_list_opt: enumerator_list;
+enumerator_list_opt: enumerator_list ',';
+enumerator_list_opt: ;
+
+enumerator_list: enumerator_list ',' enumerator_definition;
+enumerator_list: enumerator_definition;
+
+nonterm enumerator_definition
+{
+	Object *newId;
+};
+
+enumerator_definition: 
+	enumerator_id
+	try {
+		$$->newId = new Object( Object::UnknownType, $1->id );
+		declNs.top()->insertObject( $1->id, $$->newId );
+	}
+	undo {
+		declNs.top()->removeObject( $$->newId );
+	};
+
+enumerator_definition: 
+	enumerator_id '=' constant_expression
+	try {
+		$$->newId = new Object( Object::UnknownType, $1->id );
+		declNs.top()->insertObject( $1->id, $$->newId );
+	}
+	undo {
+		declNs.top()->removeObject( $$->newId );
+	};
+
+nonterm enumerator_id 
+{
+	char *id;
+};
+
+enumerator_id: 
+	TK_NamespaceName
+	try { 
+		$$->id = $1->data;
+	};
+enumerator_id: 
+	TK_TypedefName
+	try { 
+		$$->id = $1->data;
+	};
+enumerator_id: 
+	TK_EnumName
+	try { 
+		$$->id = $1->data;
+	};
+enumerator_id: 
+	TK_ClassName
+	try { 
+		$$->id = $1->data;
+	};
+enumerator_id: 
+	TK_TemplClassName
+	try { 
+		$$->id = $1->data;
+	};
+enumerator_id: 
+	TK_TemplateId
+	try { 
+		$$->id = $1->data;
+	};
+enumerator_id: 
+	TK_Identifier
+	try { 
+		$$->id = $1->data;
+	};
+enumerator_id: 
+	TK_UnknownId
+	try { 
+		$$->id = $1->data;
+	};
+
+
+#
+# Declarators
+#
+
+init_declarator_list_opt: init_declarator_list;
+init_declarator_list_opt: ;
+
+init_declarator_list: init_declarator_list ',' init_declarator;
+init_declarator_list: init_declarator;
+
+init_declarator: declarator initializer_opt;
+
+initializer_opt: '=' initializer_clause;
+initializer_opt: '(' expression ')';
+initializer_opt: ;
+
+initializer_clause: assignment_expression;
+initializer_clause: '{' initializer_list '}';
+initializer_clause: '{' initializer_list ',' '}';
+initializer_clause: '{' '}';
+
+initializer_list: initializer_list ',' initializer_clause;
+initializer_list: initializer_clause;
+
+nonterm declarator
+{
+	Object *qualObj;
+	Object *declScope;
+};
+
+declarator: 
+	ptr_operator_seq declarator_id decl_array_or_param_rep declarator_end
+	try {
+		$$->qualObj = $4->qualObj;
+		$$->declScope = $4->declScope;
+	};
+
+declarator: 
+	ptr_operator_seq '(' sub_declarator ')' decl_array_or_param_rep declarator_end
+	try {
+		$$->qualObj = $6->qualObj;
+		$$->declScope = $6->declScope;
+		$2->outType = TK_DeclaratorOpen;
+		$4->outType = TK_DeclaratorClose;
+	}
+	undo {
+		$2->outType = $4->outType = 0;
+	};
+
+declarator: 
+	declarator_id decl_array_or_param_rep declarator_end
+	try {
+		$$->qualObj = $3->qualObj;
+		$$->declScope = $3->declScope;
+	};
+
+declarator: 
+	'(' sub_declarator ')' decl_array_or_param_rep declarator_end
+	try {
+		$$->qualObj = $5->qualObj;
+		$$->declScope = $5->declScope;
+		$1->outType = TK_DeclaratorOpen;
+		$3->outType = TK_DeclaratorClose;
+	}
+	undo {
+		$1->outType = $3->outType = 0;
+	};
+
+sub_declarator: ptr_operator_seq declarator_id decl_array_or_param_rep;
+
+sub_declarator: 
+	ptr_operator_seq '(' sub_declarator ')' decl_array_or_param_rep
+	try {
+		$2->outType = TK_DeclaratorOpen;
+		$4->outType = TK_DeclaratorClose;
+	}
+	undo {
+		$2->outType = $4->outType = 0;
+	};
+
+sub_declarator: 
+	'(' sub_declarator ')' decl_array_or_param_rep 
+	try {
+		$1->outType = TK_DeclaratorOpen;
+		$3->outType = TK_DeclaratorClose;
+	}
+	undo {
+		$1->outType = $3->outType = 0;
+	};
+
+sub_declarator: declarator_id decl_array_or_param_rep;
+
+decl_array_or_param_rep: decl_array_or_param_rep decl_array_or_param;
+decl_array_or_param_rep: ;
+
+decl_array_or_param: '[' constant_expression_opt ']';
+decl_array_or_param: 
+	'(' parameter_declaration_clause ')' cv_qualifier_rep exception_specification_opt
+	try {
+		$1->outType = TK_ParameterOpen;
+		$3->outType = TK_ParameterClose;
+	}
+	undo {
+		$1->outType = $3->outType = 0;
+	};
+
+nonterm declarator_id
+{
+	Object *object;
+};
+
+declarator_id: 
+	declarator_id_forms
+	try {
+		Object *qualNs = $1->nameData.qualNs;
+		char *id = $1->nameData.id;
+
+		Object *parentNs = qualNs != 0 ? qualNs : declNs.top();
+
+		/* Check if we are declaring a constructor or destructor. */
+		bool isConstructor = false;
+		if ( parentNs->type == Object::ClassType || 
+				parentNs->type == Object::TemplateClassType )
+		{
+			if ( parentNs->data != 0 && id != 0 && strcmp( parentNs->data, id ) == 0 ) {
+				isConstructor = true;
+				#ifdef LOG_REDUCE
+				cerr << "making declarator " << id << " a constructor/destructor" << endl;
+				#endif
+			}
+		}
+
+		Object *object = 0;
+		if ( id != 0 && !declarationData.top().isFriend && !isConstructor ) {
+			if ( declarationData.top().isTypedef ) {
+				object = new Object( Object::TypedefType, id );
+				object->objType = declarationData.top().type;
+				parentNs->insertObject( id, object );
+				#ifdef LOG_REDUCE
+				cerr << "making declarator " << id << " a typedef of ";
+				if ( object->objType != 0 )
+					object->objType->print( cerr );
+				else
+					cerr << "(NULL)";
+				cerr << endl;
+				#endif
+			}
+			else if ( qualNs == 0 ) {
+				if ( declarationData.top().isTemplate ) {
+					/* If in a template declaration and the name is not qualified then
+					 * create the template id. */
+					object = new Object( Object::TemplateIdType, id );
+					object->objType = declarationData.top().type;
+					declNs.top()->insertObject( id, object );
+
+					#ifdef LOG_REDUCE
+					cerr << "making declarator " << id << " a template id" << endl;
+					#endif
+				}
+				else {
+					object = new Object( Object::IdType, id );
+					object->objType = declarationData.top().type;
+					declNs.top()->insertObject( id, object );
+
+					#ifdef LOG_REDUCE
+					cerr << "making declarator " << id << " an id with type ";
+					if ( object->objType != 0 )
+						object->objType->print( cerr );
+					else
+						cerr << "(NULL)";
+					cerr << endl;
+					#endif
+				}
+			}
+		}
+
+		/* Make scope for declarator. */
+		$$->object = object;
+
+		declaratorData.push( DeclaratorData() );
+		declaratorData.top().init();
+
+		declaratorData.top().qualObj = qualNs;
+
+		/* If the declarator is qualified, push the qualification to the lookup stack. */
+		if ( qualNs != 0 )
+			lookupNs.push( &qualNs->lookupNs );
+
+		#ifdef LOG_REDUCE
+		cerr << "reduced declarator_id: qualNs: " << qualNs << " id: " 
+				<< (id != 0 ? id : "<NONE>") << endl;
+		#endif
+	} 
+	undo {
+		Object *qualNs = $1->nameData.qualNs;
+		if ( qualNs != 0 )
+			lookupNs.pop();
+
+		declaratorData.pop();
+
+		/* If we made a new object, must remove and delete it. */
+		Object *namedObj = $$->object;
+		if ( namedObj != 0 ) {
+			switch ( namedObj->type ) {
+				case Object::TypedefType: {
+					Object *parentNs = qualNs != 0 ? qualNs : declNs.top();
+					parentNs->removeObject( namedObj );
+					break;
+				}
+				case Object::IdType:
+				case Object::TemplateIdType:
+					declNs.top()->removeObject( namedObj );
+					break;
+				default:
+					assert(false);
+			}
+		}
+	};
+
+nonterm declarator_end
+{
+	Object *qualObj;
+	Object *declScope;
+	DeclaratorData prevDeclaratorData;
+};
+
+# Undoes the setup done by declarator_id.
+declarator_end:
+	try {
+		/* Get the Declarator scope from the top of the declNs stack. */
+		Object *declScope = declaratorData.top().declScope;
+		Object *qualObj = declaratorData.top().qualObj;
+
+		$$->prevDeclaratorData = declaratorData.top();
+		declaratorData.pop();
+
+		if ( declScope != 0 )
+			declNs.pop();
+		if ( qualObj != 0 )
+			lookupNs.pop();
+
+		$$->qualObj = qualObj;
+		$$->declScope = declScope;
+	}
+	undo {
+		declaratorData.push( $$->prevDeclaratorData );
+
+		Object *declScope = declaratorData.top().declScope;
+		Object *qualObj = declaratorData.top().qualObj;
+
+		if ( declScope != 0 )
+			declNs.push( declScope );
+		if ( qualObj != 0 )
+			lookupNs.push( &qualObj->lookupNs );
+	};
+
+nonterm declarator_id_forms
+{
+	NameData nameData;
+};
+
+declarator_id_forms: 
+	id_expression
+	try {
+		$$->nameData = $1->nameData;
+		if ( $1->nameData.langEl != 0 ) {
+			$1->nameData.langEl->user.token.outType = TK_DeclaratorId;
+		}
+	}
+	undo {
+		if ( $1->nameData.langEl != 0 )
+			$1->nameData.langEl->user.token.outType = 0;
+	};
+
+declarator_id_forms: 
+	root_qual_opt nested_name_specifier_opt type_name qual_reset
+	try {
+		/* Get any qualification and the id. */
+		$$->nameData = $3->nameData;
+		$$->nameData.qualNs = $4->qualObj;
+	};
+declarator_id_forms: 
+	root_qual_opt nested_name_specifier_opt TK_ClassName qual_reset
+	try {
+		/* Get any qualification and the id. */
+		$$->nameData.id = $3->data;
+		$$->nameData.object = $3->object;
+		$$->nameData.qualNs = $4->qualObj;
+	};
+declarator_id_forms: 
+	root_qual_opt nested_name_specifier_opt '~' TK_ClassName qual_reset
+	try {
+		/* Get any qualification and the id. */
+		$$->nameData.id = $4->data;
+		$$->nameData.object = $4->object;
+		$$->nameData.qualNs = $5->qualObj;
+	};
+declarator_id_forms: 
+	root_qual_opt nested_name_specifier_opt '~' TK_UnknownId qual_reset
+	try {
+		/* Get any qualification and the id. */
+		$$->nameData.id = $4->data;
+		$$->nameData.object = 0;
+		$$->nameData.qualNs = $5->qualObj;
+	};
+
+
+nonterm type_id
+{
+	Type *type;
+	Object *object;
+};
+
+type_id: 
+	type_specifier_seq abstract_declarator_opt
+	try {
+		$$->type = $1->type;
+		$$->object = $1->object;
+	};
+
+abstract_declarator_opt: abstract_declarator;
+abstract_declarator_opt: ;
+
+abstract_declarator: 
+	ptr_operator_seq abstract_noid abstract_decl_array_or_param_rep declarator_end;
+
+abstract_declarator: 
+	ptr_operator_seq '(' sub_abstract_declarator ')' 
+		abstract_decl_array_or_param_rep declarator_end
+	try {
+		$2->outType = TK_DeclaratorOpen;
+		$4->outType = TK_DeclaratorClose;
+	}
+	undo {
+		$2->outType = $4->outType = 0;
+	};
+
+abstract_declarator: 
+	abstract_noid abstract_decl_array_or_param_seq declarator_end;
+
+abstract_declarator: 
+	'(' sub_abstract_declarator ')' abstract_decl_array_or_param_rep declarator_end
+	try {
+		$1->outType = TK_DeclaratorOpen;
+		$3->outType = TK_DeclaratorClose;
+	}
+	undo {
+		$1->outType = $3->outType = 0;
+	};
+
+sub_abstract_declarator: 
+	ptr_operator_seq abstract_noid abstract_decl_array_or_param_rep;
+
+sub_abstract_declarator: 
+	ptr_operator_seq '(' sub_abstract_declarator ')' 
+		abstract_decl_array_or_param_rep
+	try {
+		$2->outType = TK_DeclaratorOpen;
+		$4->outType = TK_DeclaratorClose;
+	}
+	undo {
+		$2->outType = $4->outType = 0;
+	};
+	
+sub_abstract_declarator: 
+	'(' sub_abstract_declarator ')' abstract_decl_array_or_param_rep
+	try {
+		$1->outType = TK_DeclaratorOpen;
+		$3->outType = TK_DeclaratorClose;
+	}
+	undo {
+		$1->outType = $3->outType = 0;
+	};
+
+abstract_noid:
+	try {
+		/* Make scope for declarator. */
+		declaratorData.push( DeclaratorData() );
+		declaratorData.top().init();
+	}
+	undo {
+		declaratorData.pop();
+	};
+
+abstract_decl_array_or_param_rep: 
+	abstract_decl_array_or_param_rep abstract_decl_array_or_param;
+abstract_decl_array_or_param_rep: ;
+
+abstract_decl_array_or_param_seq: 
+	abstract_decl_array_or_param_seq abstract_decl_array_or_param;
+abstract_decl_array_or_param_seq: abstract_decl_array_or_param;
+
+abstract_decl_array_or_param: 
+	'[' constant_expression_opt ']';
+abstract_decl_array_or_param: 
+	'(' parameter_declaration_clause ')' cv_qualifier_rep 
+		exception_specification_opt 
+	try {
+		$1->outType = TK_ParameterOpen;
+		$3->outType = TK_ParameterClose;
+	}
+	undo {
+		$1->outType = 0;
+		$3->outType = 0;
+	};
+
+parameter_declaration_clause: pdc_start parameter_declaration_list;
+parameter_declaration_clause: pdc_start parameter_declaration_list TK_DotDotDot;
+parameter_declaration_clause: pdc_start parameter_declaration_list ',' TK_DotDotDot;
+parameter_declaration_clause: pdc_start TK_DotDotDot;
+parameter_declaration_clause: pdc_start ;
+
+nonterm pdc_start
+{
+	bool createdScope;
+};
+
+pdc_start: 
+	try {
+		/* We are going to need a scope for the declarator. */
+		$$->createdScope = false;
+		if ( declaratorData.top().declScope == 0 ) {
+			$$->createdScope = true;
+			Object *declScope = new Object;
+			declNs.push( declScope );
+			declaratorData.top().declScope = declScope;
+		}
+	}
+	undo {
+		if ( $$->createdScope ) {
+			declNs.pop();
+			declaratorData.top().declScope = 0;
+		}
+	};
+
+parameter_declaration_list: parameter_declaration_list ',' parameter_declaration;
+parameter_declaration_list: parameter_declaration;
+
+parameter_declaration: 
+	declaration_start decl_specifier_mult_seq param_maybe_declarator 
+	maybe_parameter_init declaration_end;
+
+parameter_declaration: 
+	declaration_start decl_specifier_sing decl_specifier_mult_rep param_maybe_declarator 
+	maybe_parameter_init declaration_end;
+
+parameter_declaration: 
+	declaration_start decl_specifier_mult_seq decl_specifier_sing decl_specifier_mult_rep 
+	param_maybe_declarator maybe_parameter_init declaration_end;
+
+param_maybe_declarator: abstract_declarator;
+param_maybe_declarator: declarator;
+param_maybe_declarator: ;
+
+maybe_parameter_init: '=' constant_expression;
+maybe_parameter_init: ;
+
+ptr_operator: '&';
+ptr_operator: root_qual_opt nested_name_specifier_opt '*' cv_qualifier_rep qual_reset;
+
+ptr_operator_seq: ptr_operator_seq ptr_operator;
+ptr_operator_seq: ptr_operator;
+
+ptr_operator_rep: ptr_operator_rep ptr_operator;
+ptr_operator_rep: ;
+
+function_definition: 
+	function_def_declaration ctor_initializer_opt commit function_body function_def_end;
+
+function_def_declaration: 
+	declaration_start function_def_declarator declaration_end;
+
+function_def_declaration: 
+	declaration_start decl_specifier_mult_seq function_def_declarator declaration_end;
+
+function_def_declaration: 
+	declaration_start decl_specifier_sing decl_specifier_mult_rep 
+	function_def_declarator declaration_end;
+
+function_def_declaration: 
+	declaration_start decl_specifier_mult_seq decl_specifier_sing decl_specifier_mult_rep 
+	function_def_declarator declaration_end;
+
+function_def_declarator: 
+	declarator
+	try {
+		Object *qualObj = $1->qualObj;
+		Object *declScope = $1->declScope;
+
+		/* This is for the function def end. */
+		declaratorData.push( DeclaratorData() );
+		declaratorData.top().qualObj = qualObj;
+		declaratorData.top().declScope = declScope;
+
+		if ( qualObj != 0 ) {
+			/* Give the function body the scope of the qualifier. */
+			lookupNs.push( &qualObj->lookupNs );
+		}
+		
+		/* Make the declarator scope visible in the function body. */
+		lookupNs.top()->push( declScope );
+	}
+	undo {
+		/* Make the declarator scope visible in the function body. */
+		lookupNs.top()->pop( );
+
+		Object *qualObj = $1->qualObj;
+		if ( qualObj != 0 )
+			lookupNs.pop( );
+
+		declaratorData.pop();
+	};
+
+nonterm function_def_end
+{
+	DeclaratorData prevDeclaratorData;
+};
+
+function_def_end:
+	try {
+		$$->prevDeclaratorData = declaratorData.top();
+		Object *qualObj = declaratorData.top().qualObj;
+
+		/* Pop the declarator scope. */
+		lookupNs.top()->pop();
+		if ( qualObj != 0 )
+			lookupNs.pop( );
+
+		declaratorData.pop();
+	}
+	undo {
+		declaratorData.push( $$->prevDeclaratorData );
+
+		Object *qualObj = $$->prevDeclaratorData.qualObj;
+		Object *declScope = $$->prevDeclaratorData.declScope;
+
+		if ( qualObj != 0 )
+			lookupNs.push( &qualObj->lookupNs );
+		lookupNs.top()->push( declScope );
+	};
+
+function_body: 
+	'{' function_body_begin statement_rep function_body_end '}';
+
+function_body_begin:
+	try {
+		Object *newFunctionBody = new Object;
+		lookupNs.top()->push( newFunctionBody );
+		declNs.push( newFunctionBody );
+	} 
+	undo
+	{
+		declNs.pop();
+		lookupNs.top()->pop();
+	};
+
+nonterm function_body_end
+{
+	Object *functionBody;
+};
+
+function_body_end:
+	try {
+		/* First undoes the function body begin work. Then undoes the setup in
+		 * function_def_declarator. */
+		$$->functionBody = declNs.pop();
+		lookupNs.top()->pop();
+	}
+	undo {
+		lookupNs.top()->push( $$->functionBody );
+		declNs.push( $$->functionBody );
+	};
+
+#
+# Classes
+#
+
+nonterm class_specifier uses named_object_type;
+
+class_specifier: 
+	class_head base_clause_opt commit '{' class_member_rep class_body_end '}'
+	try {
+		$$->object = $1->object;
+	};
+
+nonterm class_body_end uses named_object;
+
+class_body_end:
+	try {
+		/* Get the class object before popping. If we undo we may need to repush. */
+		$$->object = declNs.top();
+
+		/* Pop the class Ns. */
+		lookupNs.pop();
+		declNs.pop();
+	}
+	undo {
+		lookupNs.push( &$$->object->lookupNs );
+		declNs.push( $$->object );
+	};
+
+nonterm class_head
+{
+	Object *object;
+	bool created;
+	TypeListMapEl *typeListMapEl;
+};
+
+class_head: 
+	class_key
+	try {
+		/* Push a new anonymous class. */
+		Object::Type bnsType = declarationData.top().isTemplate ? 
+				Object::TemplateClassType : Object::ClassType;
+		Object *newClass = new Object( bnsType, 0, *lookupNs.top() );
+		newClass->objType = new Type( newClass );
+		lookupNs.push( &newClass->lookupNs );
+		declNs.push( newClass );
+
+		$$->object = newClass;
+	}
+	undo {
+		lookupNs.pop();
+		declNs.pop();
+	};
+
+class_head:
+	class_key nested_name_specifier_opt class_head_name qual_reset
+	try {
+		char *id = $3->nameData.id;
+		Object *qualNs = $4->qualObj;
+
+		/* Get the ns the class is declared in. */
+		Object *parentNs = declNs.top();
+		if ( qualNs != 0 )
+			parentNs = qualNs;
+
+		/* Look for the class in the given scope. */
+		$$->created = false;
+		Object *declaredClass = parentNs->findClass( id );
+		if ( declaredClass == 0 ) 
+			declaredClass = parentNs->findTemplateClass( id );
+
+		if ( declaredClass == 0 ) {
+			/* Class does not exist in the parent scope, create it. */
+			$$->created = true;
+			Object::Type bnsType = declarationData.top().isTemplate ? 
+					Object::TemplateClassType : Object::ClassType;
+			declaredClass = new Object( bnsType, id, *lookupNs.top() );
+			declaredClass->objType = new Type( declaredClass );
+
+			/* FIXME: handle friends. Make the class visible only if we are NOT
+			 * in a friend declaration.  The new class object is necessary to
+			 * properly process the body of the class. */
+			if ( ! declarationData.top().isFriend )
+				parentNs->insertObject( id, declaredClass );
+		}
+
+		/* Push the found/new class. */
+		lookupNs.push( &declaredClass->lookupNs );
+		declNs.push( declaredClass );
+
+		$$->object = declaredClass;
+		$3->nameData.langEl->user.token.outType = TK_ClassName;
+	}
+	undo {
+		lookupNs.pop( );
+		declNs.pop( );
+
+		if ( $$->created ) {
+			Object *parentNs = declNs.top();
+			if ( ! declarationData.top().isFriend )
+				parentNs->removeObject( $$->object );
+		}
+		$3->nameData.langEl->user.token.outType = 0;
+	};
+
+class_head: 
+	class_key nested_name_specifier_opt TK_TemplClassName qual_reset
+		templ_arg_open template_argument_list_opt templ_arg_close
+	try {
+		char *id = $3->data;
+		Object *classObj = $3->object;
+
+		/* Try to find the specializaition in the template class object. */
+		TypeList typeList;
+		makeTypeList( typeList, $6->last );
+
+		Object *declaredClass = 0;
+		declaredClass = classObj->findSpecExact( typeList );
+		if ( declaredClass == 0 ) {
+			$$->created = true;
+			#ifdef LOG_REDUCE
+			cerr << "making template specialization" << endl;
+			#endif
+			Object::Type bnsType = declarationData.top().isTemplate ? 
+					Object::TemplateClassType : Object::ClassType;
+			declaredClass = new Object( bnsType, id, classObj->lookupNs );
+			declaredClass->objType = new Type( declaredClass );
+			$$->typeListMapEl = classObj->typeListMap.insert( typeList, declaredClass );
+		}
+
+		/* Push the new class. */
+		lookupNs.push( &declaredClass->lookupNs );
+		declNs.push( declaredClass );
+
+		$$->object = declaredClass;
+	}
+	undo {
+		lookupNs.pop( );
+		declNs.pop();
+
+		if ( $$->created && $$->typeListMapEl != 0 ) {
+			Object *classObj = $3->object;
+			classObj->typeListMap.detach( $$->typeListMapEl );
+		}
+	};
+
+nonterm class_head_name 
+{
+	NameData nameData;
+};
+
+class_head_name: TK_ClassName try { setNameData( $$->nameData, @1 ); };
+class_head_name: TK_TemplClassName try { setNameData( $$->nameData, @1 ); };
+class_head_name: TK_NamespaceName try { setNameData( $$->nameData, @1 ); };
+class_head_name: TK_TypedefName try { setNameData( $$->nameData, @1 ); };
+class_head_name: TK_EnumName try { setNameData( $$->nameData, @1 ); };
+class_head_name: TK_UnknownId try { setNameData( $$->nameData, @1 ); };
+class_head_name: TK_Identifier try { setNameData( $$->nameData, @1 ); };
+class_head_name: TK_TemplateId try { setNameData( $$->nameData, @1 ); };
+
+class_key: KW_Class;
+class_key: KW_Struct;
+class_key: KW_Union;
+
+class_member_rep: class_member_rep class_member;
+class_member_rep: ;
+
+class_member: member_declaration;
+class_member: access_specifier ':';
+
+member_declaration: member_declaration_forms ';' commit;
+member_declaration: function_definition commit;
+member_declaration: using_declaration commit;
+member_declaration: template_declaration commit;
+
+member_declaration_forms: 	
+	declaration_start member_declarator_list_opt declaration_end;
+
+member_declaration_forms: 
+	declaration_start decl_specifier_mult_seq member_declarator_list_opt declaration_end;
+
+member_declaration_forms: 
+	declaration_start decl_specifier_sing decl_specifier_mult_rep 
+	member_declarator_list_opt declaration_end;
+
+member_declaration_forms: 
+	declaration_start decl_specifier_mult_seq decl_specifier_sing decl_specifier_mult_rep 
+	member_declarator_list_opt declaration_end;
+
+member_declarator_list_opt: member_declarator_list;
+member_declarator_list_opt: ;
+
+member_declarator_list: member_declarator_list ',' member_declarator;
+member_declarator_list: member_declarator;
+
+member_declarator: declarator;
+member_declarator: declarator '=' constant_expression;
+member_declarator: declarator ':' constant_expression;
+member_declarator: ':' constant_expression;
+
+access_specifier: KW_Private;
+access_specifier: KW_Protected;
+access_specifier: KW_Public;
+
+access_specifier_opt: access_specifier;
+access_specifier_opt: ;
+
+#
+# Derived classes
+#
+base_clause: 
+	':' base_specifier_list;
+
+base_clause_opt: base_clause;
+base_clause_opt: ;
+
+base_specifier_list: base_specifier_list ',' base_specifier;
+base_specifier_list: base_specifier;
+
+base_specifier: 
+	root_qual_opt nested_name_specifier_opt type_name qual_reset
+	try {
+		Object *inherit = $3->nameData.object;
+		//if ( inherit->type == Object::TypedefType )
+		//	inherit = inherit->origType->getObject();
+		declNs.top()->nsChildren.append( inherit );
+	}
+	undo {
+		int vectLen = declNs.top()->nsChildren.length();
+		declNs.top()->nsChildren.remove( vectLen - 1 );
+	};
+
+base_specifier: 
+	KW_Virtual access_specifier_opt root_qual_opt nested_name_specifier_opt 
+	type_name qual_reset
+	try {
+		Object *inherit = $5->nameData.object;
+		//if ( inherit->type == Object::TypedefType )
+		//	inherit = inherit->origType->getObject();
+		declNs.top()->nsChildren.append( inherit );
+	}
+	undo {
+		int vectLen = declNs.top()->nsChildren.length();
+		declNs.top()->nsChildren.remove( vectLen - 1 );
+	};
+
+base_specifier: 
+	access_specifier virtual_opt root_qual_opt nested_name_specifier_opt 
+	type_name qual_reset 
+	try {
+		Object *inherit = $5->nameData.object;
+		//if ( inherit->type == Object::TypedefType )
+		//	inherit = inherit->origType->getObject();
+		declNs.top()->nsChildren.append( inherit );
+	}
+	undo {
+		int vectLen = declNs.top()->nsChildren.length();
+		declNs.top()->nsChildren.remove( vectLen - 1 );
+	};
+
+virtual_opt: KW_Virtual;
+virtual_opt: ;
+
+
+#
+# Special member functions
+#
+
+conversion_function_id: KW_Operator conversion_type_id;
+
+conversion_type_id: necs_type_specifier_seq ptr_operator_rep;
+
+ctor_initializer_opt: ctor_initializer;
+ctor_initializer_opt: ;
+
+ctor_initializer: 
+	':' mem_initializer_list;
+
+mem_initializer_list: mem_initializer_list ',' mem_initializer;
+mem_initializer_list: mem_initializer;
+
+mem_initializer: mem_initializer_id '(' expression_opt ')';
+
+mem_initializer_id: root_qual_opt nested_name_specifier_opt TK_UnknownId qual_reset;
+mem_initializer_id: root_qual_opt nested_name_specifier_opt TK_Identifier qual_reset;
+mem_initializer_id: root_qual_opt nested_name_specifier_opt type_name qual_reset;
+mem_initializer_id: root_qual_opt nested_name_specifier_opt template_id qual_reset;
+
+
+#
+# Overloading
+#
+operator_function_id: KW_Operator operator;
+
+operator: '+';
+operator: '-';
+operator: '*';
+operator: '/';
+operator: '=';
+operator: '<';
+operator: '>';
+operator: '&';
+operator: '|';
+operator: '^';
+operator: '%';
+operator: '~';
+operator: '!';
+operator: '(' ')';
+operator: '[' ']';
+operator: KW_New;
+operator: KW_Delete;
+operator: TK_Arrow;
+operator: TK_PlusPlus;
+operator: TK_MinusMinus;
+operator: TK_MultAssign;
+operator: TK_DivAssign;
+operator: TK_PercentAssign;
+operator: TK_PlusAssign;
+operator: TK_MinusAssign;
+operator: TK_ShiftRightAssign;
+operator: TK_ShiftLeftAssign;
+operator: TK_AmpAssign;
+operator: TK_CaretAssign;
+operator: TK_BarAssign;
+operator: TK_EqualsEquals;
+operator: TK_NotEquals;
+operator: TK_AndAnd;
+operator: TK_OrOr;
+operator: lt_eq;
+operator: gt_eq;
+operator: shift_left;
+operator: shift_right;
+
+lt_eq: '<' '='
+	try {
+		if ( $2->leader != 0 ) {
+			#ifdef LOG_REDUCE
+			cerr << "rejecting less-than equals-to" << endl;
+			#endif
+			reject();
+		}
+	};
+
+gt_eq: '>' '='
+	try {
+		if ( $2->leader != 0 ) {
+			#ifdef LOG_REDUCE
+			cerr << "rejecting greater-than equals-to" << endl;
+			#endif
+			reject();
+		}
+	};
+
+shift_left: '<' '<'
+	try {
+		if ( $2->leader != 0 ) {
+			#ifdef LOG_REDUCE
+			cerr << "rejecting shift left" << endl;
+			#endif
+			reject();
+		}
+	};
+
+shift_right: '>' '>'
+	try {
+		if ( $2->leader != 0 ) {
+			#ifdef LOG_REDUCE
+			cerr << "rejecting shift right" << endl;
+			#endif
+			reject();
+		}
+	};
+
+#
+# Templates
+#
+
+nonterm template_declaration
+{
+	Object *templateParamScope;
+};
+
+template_declaration: 
+	template_declaration_params declaration
+	try {
+		templDecl.pop();
+		$$->templateParamScope = templateParamNs.pop();
+	}
+	undo {
+		templDecl.push(true);
+		templateParamNs.push($$->templateParamScope);
+	};
+
+template_declaration_params: 
+	KW_Template '<' tpl_start template_parameter_list '>' commit
+	try {
+		templDecl.push(true);
+		$2->outType = TK_TemplParamOpen;
+		$5->outType = TK_TemplParamClose;
+	}
+	undo {
+		templDecl.pop();
+		$2->outType = 0;
+		$5->outType = 0;
+	};
+
+template_declaration_params: 
+	KW_Export KW_Template '<' tpl_start template_parameter_list '>' commit
+	try {
+		$3->outType = TK_TemplParamOpen;
+		$6->outType = TK_TemplParamClose;
+	}
+	undo {
+		$3->outType = 0;
+		$6->outType = 0;
+	};
+
+tpl_start:
+	try { 
+		/* Create a new scope for the template parameters. */
+		Object *newTemplateParamScope = new Object;
+		templateParamNs.push( newTemplateParamScope );
+	}
+	undo {
+		templateParamNs.pop();
+	};
+
+template_parameter_list: template_parameter_list ',' template_parameter;
+template_parameter_list: template_parameter;
+
+template_parameter: type_parameter;
+template_parameter: template_parameter_declaration;
+
+
+template_parameter_declaration: 
+	declaration_start decl_specifier_mult_seq param_maybe_declarator 
+	maybe_parameter_init declaration_end;
+
+template_parameter_declaration: 
+	declaration_start temp_param_decl_specifier_sing decl_specifier_mult_rep 
+	param_maybe_declarator maybe_parameter_init declaration_end;
+
+template_parameter_declaration: 
+	declaration_start decl_specifier_mult_seq temp_param_decl_specifier_sing 
+	decl_specifier_mult_rep param_maybe_declarator maybe_parameter_init declaration_end;
+
+temp_param_decl_specifier_sing: 
+	temp_param_type_specifier_sing;
+
+# Template parameters cannot support elaborated type specifer or class specifier. */
+temp_param_type_specifier_sing: templ_simple_type_specifier;
+temp_param_type_specifier_sing: enum_specifier;
+
+templ_simple_type_specifier: simple_type_specifier_name;
+templ_simple_type_specifier: simple_type_specifier_kw_seq;
+
+nonterm type_parameter uses named_object;
+
+type_parameter: 
+	KW_Class type_param_id type_param_init_opt
+	try {
+		if ( $2->id != 0 ) {
+			/* The lookup ns should be a template param scope. */
+			Object *newClass = new Object( Object::ClassType, $2->id, 
+					*lookupNs.top() );
+			templateParamNs.top()->insertObject( $2->id, newClass );
+			$$->object = newClass;
+		}
+	}
+	undo {
+		if ( $2->id != 0 )
+			templateParamNs.top()->removeObject( $$->object );
+	};
+
+type_parameter: 
+	KW_Typename type_param_id type_param_init_opt
+	try {
+		if ( $2->id != 0 ) {
+			Object *newClass = new Object( Object::ClassType, $2->id, 
+					*lookupNs.top() );
+			templateParamNs.top()->insertObject( $2->id, newClass );
+			$$->object = newClass;
+		}
+	}
+	undo {
+		if ( $2->id != 0 )
+			templateParamNs.top()->removeObject( $$->object );
+	};
+
+type_parameter: 
+	KW_Template '<' tpl_start template_parameter_list '>' 
+			KW_Class type_param_id templ_type_param_init_opt
+	try {
+		if ( $7->id != 0 ) {
+			Object *newClass = new Object( Object::TemplateClassType, $7->id, 
+					*lookupNs.top() );
+			templateParamNs.top()->insertObject( $7->id, newClass );
+		}
+		$2->outType = TK_TemplParamOpen;
+		$5->outType = TK_TemplParamClose;
+	}
+	undo {
+		if ( $7->id != 0 )
+			templateParamNs.top()->removeObject( $$->object );
+		$2->outType = 0;
+		$5->outType = 0;
+	};
+
+templ_type_param_init_opt: '=' id_expression;
+templ_type_param_init_opt: ;
+
+type_param_init_opt: '=' type_id;
+type_param_init_opt: ;
+
+nonterm type_param_id 
+{
+	char *id;
+};
+
+type_param_id: TK_NamespaceName try { $$->id = $1->data; };
+type_param_id: TK_TypedefName try { $$->id = $1->data; };
+type_param_id: TK_EnumName try { $$->id = $1->data; };
+type_param_id: TK_ClassName try { $$->id = $1->data; };
+type_param_id: TK_TemplClassName try { $$->id = $1->data; };
+type_param_id: TK_Identifier try { $$->id = $1->data; };
+type_param_id: TK_TemplateId try { $$->id = $1->data; };
+type_param_id: TK_UnknownId try { $$->id = $1->data; };
+type_param_id: try { $$->id = 0; };
+
+nonterm template_argument_list_opt 
+{
+	Parser_Lel_template_argument *last;
+};
+
+template_argument_list_opt: 
+	template_argument_list 
+	try {
+		$$->last = $1->last;
+	};
+template_argument_list_opt:
+	try {
+		$$->last = 0;
+	};
+
+nonterm template_argument_list
+{
+	Parser_Lel_template_argument *last;
+};
+
+template_argument_list: 
+	template_argument_list ',' template_argument
+	try {
+		$3->prev = $1->last;
+		$$->last = $3;
+	};
+
+template_argument_list: 
+	template_argument
+	try {
+		$$->last = $1;
+	};
+
+nonterm template_argument
+{
+	Type *type;
+	Parser_Lel_template_argument *prev;
+};
+
+template_argument: type_id 
+	try { 
+		$$->type = $1->type; 
+		$$->prev = 0;
+	};
+template_argument: assignment_expression 
+	try { 
+		$$->type = 0; 
+		$$->prev = 0;
+	};
+
+explicit_instantiation: 
+	KW_Template declaration;
+explicit_instantiation: 
+	declaration_start decl_specifier_mult_seq KW_Template declaration declaration_end;
+
+explicit_specialization: 
+	KW_Template '<' '>' declaration;
+
+# Not sure what this one is about?
+explicit_specialization: 
+	declaration_start decl_specifier_mult_seq KW_Template '<' '>' 
+	declaration declaration_end;
+
+
+#
+# Exception Handling.
+#
+try_block: KW_Try compound_statement handler_seq;
+
+handler_seq: handler_seq handler;
+handler_seq: handler;
+
+handler: KW_Catch '(' exception_declaration ')' compound_statement;
+
+exception_declaration: type_specifier_seq declarator;
+exception_declaration: type_specifier_seq abstract_declarator;
+exception_declaration: type_specifier_seq;
+
+exception_declaration: TK_DotDotDot;
+
+throw_expression: KW_Throw assignment_expression;
+throw_expression: KW_Throw;
+
+exception_specification_opt: exception_specification;
+exception_specification_opt: ;
+
+exception_specification: KW_Throw '(' type_id_list_opt ')';
+
+type_id_list_opt: type_id_list;
+type_id_list_opt: ;
+
+type_id_list: type_id_list ',' type_id;
+type_id_list: type_id;
+
+}%%
+
+%%{
+	write types;
+	write data;
+}%%
+
+void Parser::init()
+{
+	%% write init;
+}
+
+int Parser::parseLangEl( int type, const Token *token )
+{
+	%% write exec;
+	return errCount == 0 ? 0 : -1;
+}
+
+void setNameData( NameData &nameData, LangEl *langEl )
+{
+	nameData.id = langEl->user.token.data;
+	nameData.object = langEl->user.token.object;
+	nameData.qualNs = 0;
+	nameData.langEl = langEl;
+}
+
+void initNameData( NameData &nameData )
+{
+	nameData.id = 0;
+	nameData.object = 0;
+	nameData.qualNs = 0;
+	nameData.langEl = 0;
+}
+
+bool Parser::isNamespaceName( LangEl *lel, MapEl *mapEl )
+{
+	Object *object = mapEl->objectList.head;
+	if ( object->type == Object::NamespaceType ) {
+		lel->type = TK_NamespaceName;
+		lel->user.token.object = object;
+		#ifdef LOG_LOOKUP
+		cerr << "found namespace name" << endl;
+		#endif
+		return true;
+	}
+	return false;
+}
+
+bool Parser::isTypedefName( LangEl *lel, MapEl *mapEl )
+{
+	Object *object = mapEl->objectList.head;
+	if ( object->type == Object::TypedefType ) {
+		lel->type = TK_TypedefName;
+		lel->user.token.object = object;
+		#ifdef LOG_LOOKUP
+		cerr << "found typedef name" << endl;
+		#endif
+		return true;
+	}
+	return false;
+}
+
+
+bool Parser::isEnumName( LangEl *lel, MapEl *mapEl )
+{
+	Object *object = mapEl->objectList.head;
+	if ( object->type == Object::EnumType ) {
+		lel->type = TK_EnumName;
+		lel->user.token.object = object;
+		#ifdef LOG_LOOKUP
+		cerr << "found enum name" << endl;
+		#endif
+		return true;
+	}
+	return false;
+}
+
+bool Parser::isClassName( LangEl *lel, MapEl *mapEl )
+{
+	Object *object = mapEl->objectList.head;
+	if ( object->type == Object::ClassType ) {
+		lel->type = TK_ClassName;
+		lel->user.token.object = object;
+		#ifdef LOG_LOOKUP
+		cerr << "found class name" << endl;
+		#endif
+		return true;
+	}
+	return false;
+}
+
+bool Parser::isTemplateClassName( LangEl *lel, MapEl *mapEl )
+{
+	Object *object = mapEl->objectList.head;
+	if ( object->type == Object::TemplateClassType ) {
+		lel->type = TK_TemplClassName;
+		lel->user.token.object = object;
+		#ifdef LOG_LOOKUP
+		cerr << "found template class name" << endl;
+		#endif
+		return true;
+	}
+	return false;
+}
+
+
+bool Parser::isTemplateId( LangEl *lel, MapEl *mapEl )
+{
+	Object *object = mapEl->objectList.head;
+	if ( object->type == Object::TemplateIdType ) {
+		lel->type = TK_TemplateId;
+		lel->user.token.object = object;
+		#ifdef LOG_LOOKUP
+		cerr << "found template id name" << endl;
+		#endif
+		return true;
+	}
+	return false;
+}
+
+bool Parser::isId( LangEl *lel, MapEl *mapEl )
+{
+	Object *object = mapEl->objectList.head;
+	if ( object->type == Object::IdType ) {
+		lel->type = TK_Identifier;
+		lel->user.token.object = object;
+		#ifdef LOG_LOOKUP
+		cerr << "found id, with type: ";
+		if ( object->objType != 0 )
+			object->objType->print( cerr );
+		else
+			cerr << "(NULL)";
+		cerr << endl;
+		#endif
+		return true;
+	}
+	return false;
+}
+
+bool Parser::lookupInStack( LangEl *lel )
+{
+	Token &token = lel->user.token;
+
+	#ifdef LOG_LOOKUP
+	cerr << "lookupInStack " << token.data << " ... ";
+	#endif
+
+	for ( FrameIter frame = *this; frame.lte(); frame++ ) {
+		for ( ChildIter ci( *frame ); ci.lte(); ci++ ) {
+			/* Get the frame to lookup in. The frame may null in the case of inheriting
+			 * a type that is not completely defined. */
+			Object *lookupIn = *ci;
+			if ( lookupIn == 0 )
+				continue;
+
+			/* Do the lookup across all types. */
+			MapEl *mapEl = lookupIn->map.find( token.data );
+			if ( mapEl != 0 && mapEl->objectList.head != 0 ) {
+				/* Namespace Name. */
+				if ( isNamespaceName( lel, mapEl ) )
+					return true;
+
+				/* Typedef Name.  */
+				if ( isTypedefName( lel, mapEl ) )
+					return true;
+
+				/* Enum Name.  */
+				if ( isEnumName( lel, mapEl ) )
+					return true;
+
+				/* Class Name. */
+				if ( isClassName( lel, mapEl ) )
+					return true;
+
+				/* Template Class Name. */
+				if ( isTemplateClassName( lel, mapEl ) )
+					return true;
+
+				/* Template Id. */
+				if ( isTemplateId( lel, mapEl ) )
+					return true;
+
+				/* Id. */
+				if ( isId( lel, mapEl ) )
+					return true;
+			}
+		}
+	}
+
+	#ifdef LOG_LOOKUP
+	cerr << "not found, setting to TK_UnknownId" << endl;
+	#endif
+
+	lel->type = TK_UnknownId;
+	lel->user.token.object = 0;
+	return false;
+}
+
+bool Parser::lookupQualified( LangEl *lel )
+{
+	Token &token = lel->user.token;
+	Object *frame = qualNs.top();
+	if ( frame == 0 )
+		frame = rootNamespace;
+
+	#ifdef LOG_LOOKUP
+	cerr << "lookupQualified " << token.data << " ... ";
+	#endif
+
+	for ( ChildIter ci( frame ); ci.lte(); ci++ ) {
+		/* Get the frame to lookup in. The frame may null in the case of
+		 * inheriting a type that is not completely defined. */
+		Object *lookupIn = *ci;
+		if ( lookupIn == 0 )
+			continue;
+
+		/* If we are looking inside a class, first check if it is the actual
+		 * class that we are interested in. */
+		if ( lookupIn->type == Object::ClassType ) {
+			if ( lookupIn->data != 0 && strcmp( token.data, lookupIn->data ) == 0 ) {
+				lel->type = TK_ClassName;
+				lel->user.token.object = lookupIn;
+				#ifdef LOG_LOOKUP
+				cerr << "found class name" << endl;
+				#endif
+				return true;
+			}
+		}
+
+		/* If we are looking inside a template class, first check if it is the
+		 * actual class that we are interested in. */
+		if ( lookupIn->type == Object::TemplateClassType ) {
+			if ( strcmp( token.data, lookupIn->data ) == 0 ) {
+				lel->type = TK_TemplClassName;
+				lel->user.token.object = lookupIn;
+				#ifdef LOG_LOOKUP
+				cerr << "found template class name" << endl;
+				#endif
+				return true;
+			}
+		}
+
+		/* Do the lookup across all types. */
+		MapEl *mapEl = lookupIn->map.find( token.data );
+		if ( mapEl != 0 && mapEl->objectList.head != 0 ) {
+			/* Namespace Name. */
+			if ( isNamespaceName( lel, mapEl ) )
+				return true;
+
+			/* Typedef Name.  */
+			if ( isTypedefName( lel, mapEl ) )
+				return true;
+
+			/* Enum Name.  */
+			if ( isEnumName( lel, mapEl ) )
+				return true;
+
+			/* Class Name. */
+			if ( isClassName( lel, mapEl ) )
+				return true;
+
+			/* Template Class Name. */
+			if ( isTemplateClassName( lel, mapEl ) )
+				return true;
+
+			/* Template Id. */
+			if ( isTemplateId( lel, mapEl ) )
+				return true;
+
+			/* Id. */
+			if ( isId( lel, mapEl ) )
+				return true;
+		}
+	}
+
+	#ifdef LOG_LOOKUP
+	cerr << "not found, setting to TK_UnknownId" << endl;
+	#endif
+
+	lel->type = TK_UnknownId;
+	lel->user.token.object = 0;
+	return false;
+}
+
+void Parser::writeToken( LangEl *lel )
+{
+	Token &token = lel->user.token;
+
+	if ( token.leader != 0 )
+		out << token.leader;
+	
+	if ( preToken.length > 0 ) {
+		out.write( preToken.data, preToken.length );
+		preToken.clear();
+	}
+
+	int type = token.outType != 0 ? token.outType : lel->type;
+
+	switch ( type ) {
+	case KW_Asm: out << "asm"; break;
+	case KW_Auto: out << "auto"; break;
+	case KW_Bool: out << "bool"; break;
+	case KW_Break: out << "break"; break;
+	case KW_Case: out << "case"; break;
+	case KW_Catch: out << "catch"; break;
+	case KW_Char: out << "char"; break;
+	case KW_Class: out << "class"; break;
+	case KW_Const: out << "const"; break;
+	case KW_ConstCast: out << "const_cast"; break;
+	case KW_Continue: out << "continue"; break;
+	case KW_Default: out << "default"; break;
+	case KW_Delete: out << "delete"; break;
+	case KW_Do: out << "do"; break;
+	case KW_Double: out << "double"; break;
+	case KW_DynamicCast: out << "dynamic_cast"; break;
+	case KW_Else: out << "else"; break;
+	case KW_Enum: out << "enum"; break;
+	case KW_Explicit: out << "explicit"; break;
+	case KW_Export: out << "export"; break;
+	case KW_Extern: out << "extern"; break;
+	case KW_False: out << "false"; break;
+	case KW_Float: out << "float"; break;
+	case KW_For: out << "for"; break;
+	case KW_Friend: out << "friend"; break;
+	case KW_Goto: out << "goto"; break;
+	case KW_If: out << "if"; break;
+	case KW_Inline: out << "inline"; break;
+	case KW_Int: out << "int"; break;
+	case KW_Long: out << "long"; break;
+	case KW_Mutable: out << "mutable"; break;
+	case KW_Namespace: out << "namespace"; break;
+	case KW_New: out << "new"; break;
+	case KW_Operator: out << "operator"; break;
+	case KW_Private: out << "private"; break;
+	case KW_Protected: out << "protected"; break;
+	case KW_Public: out << "public"; break;
+	case KW_Register: out << "register"; break;
+	case KW_ReinterpretCast: out << "reinterpret_cast"; break;
+	case KW_Return: out << "return"; break;
+	case KW_Short: out << "short"; break;
+	case KW_Signed: out << "signed"; break;
+	case KW_Sizeof: out << "sizeof"; break;
+	case KW_Static: out << "static"; break;
+	case KW_StaticCast: out << "static_cast"; break;
+	case KW_Struct: out << "struct"; break;
+	case KW_Switch: out << "switch"; break;
+	case KW_Template: out << "template"; break;
+	case KW_This: out << "this"; break;
+	case KW_Throw: out << "throw"; break;
+	case KW_True: out << "true"; break;
+	case KW_Try: out << "try"; break;
+	case KW_Typedef: out << "typedef"; break;
+	case KW_Typeid: out << "typeid"; break;
+	case KW_Typename: out << "typename"; break;
+	case KW_Union: out << "union"; break;
+	case KW_Unsigned: out << "unsigned"; break;
+	case KW_Using: out << "using"; break;
+	case KW_Virtual: out << "virtual"; break;
+	case KW_Void: out << "void"; break;
+	case KW_Volatile: out << "volatile"; break;
+	case KW_WcharT: out << "wchar_t"; break;
+	case KW_While: out << "while"; break;
+	case KW_Typeof: out << "typeof"; break;
+	case KW_Restrict: out << "restrict"; break;
+	case TK_Arrow: out << "->"; break;
+	case TK_PlusPlus: out << "++"; break;
+	case TK_MinusMinus: out << "--"; break;
+	case TK_ArrowStar: out << "->*"; break;
+	case TK_DotStar: out << ".*"; break;
+	case TK_EqualsEquals: out << "=="; break;
+	case TK_NotEquals: out << "!="; break;
+	case TK_AndAnd: out << "&&"; break;
+	case TK_OrOr: out << "||"; break;
+	case TK_MultAssign: out << "*="; break;
+	case TK_DivAssign: out << "/="; break;
+	case TK_PercentAssign: out << "%="; break;
+	case TK_PlusAssign: out << "+="; break;
+	case TK_MinusAssign: out << "-="; break;
+	case TK_AmpAssign: out << "&="; break;
+	case TK_CaretAssign: out << "^="; break;
+	case TK_BarAssign: out << "|="; break;
+	case TK_ShiftLeftAssign: out << "<<="; break;
+	case TK_ShiftRightAssign: out << ">>="; break;
+	case TK_DotDotDot: out << "..."; break;
+	case TK_NameSep: out << "::"; break;
+
+	case TK_ClassName: 
+		out << "[cn " << token.data << "]";
+		break;
+
+	case TK_TemplClassName: 
+		out << "[tc " << token.data << "]";
+		break;
+
+	case TK_NamespaceName:
+		out << "[nn " << token.data << "]";
+		break;
+
+	case TK_TypedefName: 
+		out << "[td " << token.data << "]";
+		break;
+
+	case TK_EnumName: 
+		out << "[en " << token.data << "]";
+		break;
+
+	case TK_Identifier:
+		out << "[id " << token.data << "]";
+		break;
+
+	case TK_TemplateId:
+		out << "[ti " << token.data << "]";
+		break;
+
+	case TK_DeclaratorId:
+		out << "[di " << token.data << "]";
+		break;
+
+	case TK_ParameterOpen: out << "({"; break;
+	case TK_ParameterClose: out << "})"; break;
+
+	case TK_DeclaratorOpen: out << "(|"; break;
+	case TK_DeclaratorClose: out << "|)"; break;
+
+	case TK_TemplArgOpen: out << "<|"; break;
+	case TK_TemplArgClose: out << "|>"; break;
+
+	case TK_TemplParamOpen: out << "<{"; break;
+	case TK_TemplParamClose: out << "}>"; break;
+
+#if 0
+	case TK_PointerAmp: out << "<&>"; break;
+	case TK_PointerStar: out << "<*>"; break;
+	case TK_BitfieldColon: out << ":/"; break;
+	case TK_BaseClauseColon: out << ":+"; break;
+	case TK_CtorColon: out << ":-"; break;
+	case TK_LabelColon: out << ":~"; break;
+	case TK_CondExprColon: out << ":|"; break;
+#endif
+
+	case TK_Integer:
+	case TK_DoubleLit: 
+	case TK_SingleLit: 
+	case TK_Float: 
+	case TK_IntegerOctal:
+	case TK_IntegerDecimal:
+	case TK_IntegerHex:
+	case TK_UnknownId:
+		cout << token.data;
+		break;
+
+	default:
+		if ( type <= 128 ) {
+			switch ( lel->type ) {
+			case '[': out << "[["; break;
+			case ']': out << "]]"; break;
+			default:
+				out << (char) lel->type;
+				break;
+			}
+		}
+		break;
+	}
+}
+
+
+int Parser::parseToken( int tok, bool qual, char *data, char *leader )
+{
+	Token token;
+	token.outType = 0;
+	token.data = data;
+	token.leader = leader;
+	token.qual = qual;
+	return parseLangEl( tok, &token );
+}
+
+void makeTypeList( TypeList &typeList, Parser_Lel_template_argument *last )
+{
+	int length = 0;
+	Parser_Lel_template_argument *argument = last;
+	while ( argument != 0 ) {
+		length += 1;
+		argument = argument->prev;
+	}
+
+	typeList.setAsNew( length );
+	argument = last;
+	for ( int pos = length-1; pos >= 0; pos--, argument = argument->prev )
+		typeList[pos] = argument->type;
+}

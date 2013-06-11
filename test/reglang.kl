@@ -1,0 +1,349 @@
+#include <iostream>
+#include <stdlib.h>
+
+using std::cout;
+using std::endl;
+
+/* Grammar for a language describing regular languages. */
+
+struct Token { };
+struct LangEl;
+
+struct Parser
+{
+	%%{
+		parser Parser;
+	
+		token tt_id;
+		token tt_equals;
+		token tt_semi;
+		token tt_pipe;
+		token tt_amp;
+		token tt_minus;
+		token tt_dot;
+		token tt_colon;
+		token tt_percent;
+		token tt_dollar;
+		token tt_plus;
+		token tt_number;
+		token tt_star;
+		token tt_question;
+		token tt_not;
+		token tt_andFSM;
+		token tt_orFSM;
+		token tt_open;
+		token tt_close;
+	}%%
+
+	%% write instance_data;
+
+	void init();
+	int parseLangEl( int type, const Token &tokenRef );
+	void finish();
+};
+
+%% write token_defs;
+
+%%{
+
+parser Parser;
+
+start: M try { cout << "start = M;" << endl; };
+M: M A try { cout << "M = M A;" << endl; };
+M: A try { cout << "M = A;" << endl; };
+A: tt_id tt_equals E tt_semi try { cout << "A = tt_id tt_equals E tt_semi;" << endl; };
+E: E tt_pipe T try { cout << "E = E tt_pipe T;" << endl; };
+E: E tt_amp T try { cout << "E = E tt_amp T;" << endl; };
+E: E tt_minus T try { cout << "E = E tt_minus T;" << endl; };
+E: T try { cout << "E = T;" << endl; };
+T: T tt_dot N try { cout << "T = T tt_dot N;" << endl; };
+T: T N try { cout << "T = T N;" << endl; };
+T: N try { cout << "T = N;" << endl; };
+N: N tt_colon tt_id try { cout << "N = N tt_colon tt_id;" << endl; };
+N: N tt_percent tt_id try { cout << "N = N tt_percent tt_id;" << endl; };
+N: N tt_dollar tt_id try { cout << "N = N tt_dollar tt_id;" << endl; };
+N: N tt_colon tt_plus tt_number try { cout << "N = N tt_colon tt_plus tt_number;" << endl; };
+N: N tt_colon tt_minus tt_number try { cout << "N = N tt_colon tt_minus tt_number;" << endl; };
+N: N tt_percent tt_plus tt_number try { cout << "N = N tt_percent tt_plus tt_number;" << endl; };
+N: N tt_percent tt_minus tt_number try { cout << "N = N tt_percent tt_minus tt_number;" << endl; };
+N: N tt_dollar tt_plus tt_number try { cout << "N = N tt_dollar tt_plus tt_number;" << endl; };
+N: N tt_dollar tt_minus tt_number try { cout << "N = N tt_dollar tt_minus tt_number;" << endl; };
+N: K try { cout << "N = K;" << endl; };
+K: F tt_star try { cout << "K = F tt_star;" << endl; };
+K: F tt_question try { cout << "K = F tt_question;" << endl; };
+K: F tt_plus try { cout << "K = F tt_plus;" << endl; };
+K: F try { cout << "K = F;" << endl; };
+K: tt_not F tt_star try { cout << "K = tt_not F tt_star;" << endl; };
+K: tt_not F tt_question try { cout << "K = tt_not F tt_question;" << endl; };
+K: tt_not F tt_plus try { cout << "K = tt_not F tt_plus;" << endl; };
+K: tt_not F try { cout << "K = tt_not F;" << endl; };
+F: tt_andFSM try { cout << "F = tt_andFSM;" << endl; };
+F: tt_orFSM try { cout << "F = tt_orFSM;" << endl; };
+F: tt_id try { cout << "F = tt_id;" << endl; };
+F: tt_open E tt_close try { cout << "F = tt_open E tt_close;" << endl; };
+
+}%%
+
+%%{
+	write types;
+	write data;
+}%%
+
+
+void Parser::init()
+{
+	%% write init;
+}
+
+void Parser::finish()
+{
+	%% write finish;
+}
+
+int Parser::parseLangEl( int type, const Token &tokenRef )
+{
+	const Token *token = &tokenRef;
+	%% write exec;
+	return errCount == 0 ? 0 : -1;
+}
+
+void test0()
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_equals, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_star, token );
+	parser.parseLangEl( tt_minus, token );
+	parser.parseLangEl( tt_andFSM, token );
+	parser.parseLangEl( tt_dot, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_semi, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_equals, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_andFSM, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_semi, token );
+	parser.parseLangEl( Parser_tk_eof, token );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test1()
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_equals, token );
+	parser.parseLangEl( tt_open, token );
+	parser.parseLangEl( tt_orFSM, token );
+	parser.parseLangEl( tt_minus, token );
+	parser.parseLangEl( tt_andFSM, token );
+	parser.parseLangEl( tt_close, token );
+	parser.parseLangEl( tt_star, token );
+	parser.parseLangEl( tt_semi, token );
+	parser.parseLangEl( Parser_tk_eof, token );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test2()
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_equals, token );
+	parser.parseLangEl( tt_not, token );
+	parser.parseLangEl( tt_open, token );
+	parser.parseLangEl( tt_orFSM, token );
+	parser.parseLangEl( tt_minus, token );
+	parser.parseLangEl( tt_not, token );
+	parser.parseLangEl( tt_andFSM, token );
+	parser.parseLangEl( tt_close, token );
+	parser.parseLangEl( tt_star, token );
+	parser.parseLangEl( tt_semi, token );
+	parser.parseLangEl( Parser_tk_eof, token );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test3()
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_equals, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_colon, token );
+	parser.parseLangEl( tt_minus, token );
+	parser.parseLangEl( tt_number, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_colon, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_dollar, token );
+	parser.parseLangEl( tt_plus, token );
+	parser.parseLangEl( tt_number, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_percent, token );
+	parser.parseLangEl( tt_minus, token );
+	parser.parseLangEl( tt_number, token );
+	parser.parseLangEl( tt_semi, token );
+	parser.parseLangEl( Parser_tk_eof, token );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test4()
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_equals, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_pipe, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_amp, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_minus, token );
+	parser.parseLangEl( tt_id, token );
+	parser.parseLangEl( tt_semi, token );
+	parser.parseLangEl( Parser_tk_eof, token );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+
+int main()
+{
+	test0();
+	test1();
+	test2();
+	test3();
+	test4();
+}
+
+#ifdef _____OUTPUT_____
+F = tt_id;
+K = F tt_star;
+N = K;
+T = N;
+E = T;
+F = tt_andFSM;
+K = F;
+N = K;
+T = N;
+F = tt_id;
+K = F;
+N = K;
+T = T tt_dot N;
+E = E tt_minus T;
+A = tt_id tt_equals E tt_semi;
+M = A;
+F = tt_id;
+K = F;
+N = K;
+T = N;
+F = tt_andFSM;
+K = F;
+N = K;
+T = T N;
+F = tt_id;
+K = F;
+N = K;
+T = T N;
+E = T;
+A = tt_id tt_equals E tt_semi;
+M = M A;
+start = M;
+0
+F = tt_orFSM;
+K = F;
+N = K;
+T = N;
+E = T;
+F = tt_andFSM;
+K = F;
+N = K;
+T = N;
+E = E tt_minus T;
+F = tt_open E tt_close;
+K = F tt_star;
+N = K;
+T = N;
+E = T;
+A = tt_id tt_equals E tt_semi;
+M = A;
+start = M;
+0
+F = tt_orFSM;
+K = F;
+N = K;
+T = N;
+E = T;
+F = tt_andFSM;
+K = tt_not F;
+N = K;
+T = N;
+E = E tt_minus T;
+F = tt_open E tt_close;
+K = tt_not F tt_star;
+N = K;
+T = N;
+E = T;
+A = tt_id tt_equals E tt_semi;
+M = A;
+start = M;
+0
+F = tt_id;
+K = F;
+N = K;
+N = N tt_colon tt_minus tt_number;
+T = N;
+F = tt_id;
+K = F;
+N = K;
+N = N tt_colon tt_id;
+T = T N;
+F = tt_id;
+K = F;
+N = K;
+N = N tt_dollar tt_plus tt_number;
+T = T N;
+F = tt_id;
+K = F;
+N = K;
+N = N tt_percent tt_minus tt_number;
+T = T N;
+E = T;
+A = tt_id tt_equals E tt_semi;
+M = A;
+start = M;
+0
+F = tt_id;
+K = F;
+N = K;
+T = N;
+E = T;
+F = tt_id;
+K = F;
+N = K;
+T = N;
+E = E tt_pipe T;
+F = tt_id;
+K = F;
+N = K;
+T = N;
+E = E tt_amp T;
+F = tt_id;
+K = F;
+N = K;
+T = N;
+E = E tt_minus T;
+A = tt_id tt_equals E tt_semi;
+M = A;
+start = M;
+0
+#endif

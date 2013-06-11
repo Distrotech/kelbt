@@ -1,0 +1,1201 @@
+%
+%  Copyright 2004, 2005 Adrian Thurston <thurston@complang.org>
+%
+
+%  This file is part of C++ Pre-Parser.
+%
+%  C++ Pre-Parser is free software; you can redistribute it and/or modify
+%  it under the terms of the GNU General Public License as published by
+%  the Free Software Foundation; either version 2 of the License, or
+%  (at your option) any later version.
+%
+%  C++ Pre-Parser is distributed in the hope that it will be useful,
+%  but WITHOUT ANY WARRANTY; without even the implied warranty of
+%  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+%  GNU General Public License for more details.
+%
+%  You should have received a copy of the GNU General Public License
+%  along with C++ Pre-Parser; if not, write to the Free Software
+%  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA 
+
+%
+%  Derived from ISO/IEC C++ Standard 14822 first edition 1998-09-01
+%
+
+% Want to control output formatting ourselves.
+#pragma -comment -raw
+
+tokens
+	number
+			% Decimal
+			"0[uUlL]?[uUlL]?[uUlL]?"
+		|	"[123456789][0123456789]*[uUlL]?[uUlL]?[uUlL]?"
+
+			% Octal
+		|	"0[01234567]+[uUlL]?[uUlL]?[uUlL]?"
+	
+			% Hex
+		|	"0[xX][\dABCDEFabcdef]+[uUlL]?"
+
+			% Float
+		|	"\d+.\d*([eE][+-]?\d+)?[fFlL]?"
+		|	"\d*.\d+([eE][+-]?\d+)?[fFlL]?"
+		|	"\d+([eE][+-]?\d+)[fFlL]?"
+
+end tokens
+
+keys
+	'asm 'auto 'bool 'break 'case 'catch 'char 'class 'const 'const_cast
+	'continue 'default 'delete 'do 'double 'dynamic_cast 'else 'enum 'explicit
+	'export 'extern 'false 'float 'for 'friend 'goto 'if 'inline 'int 'long
+	'mutable 'namespace 'new 'operator 'private 'protected 'public 'register
+	'reinterpret_cast 'return 'shor 'short 'signed 'sizeof 'static 'static_cast
+	'struct 'switch 'template 'this 'throw 'true 'try 'typedef 'typeid
+	'typename 'union 'unsigned 'using 'virtual 'void 'vola 'volatile 'wchar_t
+	'while 
+end keys
+
+compounds
+	':: '... '+= '-= '*= '/= '%= '^= '&= '|= '<< '>> '>>= '<<= '== '!= '<= '>=
+	'&& '|| '.* '->* '-> '-- '++
+end compounds
+
+comments
+	/* */
+	//
+end comments
+
+compounds
+		'$$
+		'<*> '<&>
+		'({ '})
+		'(| '|)
+		'<{ '}>
+		'<| '|>
+		':/ ':+ ':- ':~ ':|
+end compounds
+%
+% A.2 Lexical Conventions
+%
+define literal
+		[number]
+	|	[charlit]
+	|	[repeat stringlit+]
+	|	'true
+	|	'false
+end define
+
+%
+% A.4 Expressions
+%
+
+define primary_expression
+		[literal]
+	|	'this
+	|	'( [expression] ')
+	|	[id_expression]
+end define
+
+define id_expression
+		[opt '::] [opt nested_name_specifier] [unqualified_id]
+end define
+
+define unqualified_id
+		[id] [opt template_id_args]
+	|	[operator_function_id]
+	|	[conversion_function_id]
+	|	'~ [class_name]
+end define
+
+define nested_name_specifier
+		[class_id] [opt template_id_args] ':: [nested_name_specifier_rest]
+	|	[namespace_name] [opt template_id_args] ':: [nested_name_specifier_rest]
+end define
+
+define nested_name_specifier_rest
+		[opt nested_name_specifier]
+	|	'template [nested_name_specifier]
+end define
+
+define postfix_expression
+		[postfix_item] [repeat postfix_operator]
+end define
+
+define postfix_item
+		[primary_expression] 
+	|	[simple_type_specifier] '( [opt expression] ') 
+	|	'typename [opt '::] [opt nested_name_specifier] [type_name] '( [opt expression] ')
+	|	'dynamic_cast [templ_arg_open] [type_id] [templ_arg_close] '( [expression] ')
+	|	'static_cast [templ_arg_open] [type_id] [templ_arg_close] '( [expression] ')
+	|	'reinterpret_cast [templ_arg_open] [type_id] [templ_arg_close] '( [expression] ')
+	|	'const_cast [templ_arg_open] [type_id] [templ_arg_close] '( [expression] ') 
+	|	'typeid '( [expression] ') 
+	|	'typeid '( [type_id] ')
+end define
+
+define postfix_operator
+		[square_open] [expression] [square_close] 
+	|	'( [opt expression] ') 
+	|	'. [opt 'template] [id_expression]
+	|	'-> [opt 'template] [id_expression]
+	|	'. [pseudo_destructor_name]
+	|	'-> [pseudo_destructor_name]
+	|	'++
+	|	'--
+end define
+
+define templ_arg_open
+		'<|
+	|	'<
+end define
+
+define templ_arg_close
+		'|>
+	|	'>
+end define
+
+define pseudo_destructor_name
+		[opt '::] [opt nested_name_specifier] [type_name] ':: '~ [type_name]
+	|	[opt '::] [nested_name_specifier] 'template [template_id] ':: '~ [type_name]
+	|	[opt '::] [opt nested_name_specifier] '~ [type_name]
+end define
+
+define unary_expression
+		[postfix_expression]
+	|	'++ [cast_expression] 
+	|	'-- [cast_expression]
+	|	[unary_operator] [cast_expression]
+	|	'sizeof [unary_expression]
+	|	'sizeof '( [type_id] ') 
+	|	[new_expression]
+	|	[delete_expression]
+end define
+
+define unary_operator
+		'* | '& | '+ | '- | '! | '~
+end define
+
+define new_expression
+		[opt '::] 'new [opt new_placement] [new_type]
+end define
+
+define new_type
+		[new_type_id] [opt new_initializer]
+	|	'( [type_id] ') [opt new_initializer]
+end define
+
+define new_placement
+		'( [expression] ')
+end define
+
+define new_type_id
+		[repeat type_specifier+] [new_declarator_opt]
+end define
+
+define new_declarator_opt
+		[repeat ptr_operator] [repeat new_decl_array]
+end define
+
+define new_decl_array
+		[square_open] [expression] [square_close]
+end define
+
+define new_initializer
+		'( [opt expression] ')
+end define
+
+define delete_expression
+		[opt '::] 'delete [cast_expression]
+	|	[opt '::] 'delete [square_open] [square_close] [cast_expression]
+end define
+
+define cast_expression
+		[unary_expression]
+	|	'( [type_id] ') [cast_expression]
+end define
+
+define pm_expression
+		[cast_expression]
+	|	[pm_expression] [SP] [pm_op] [SP] [cast_expression]
+end define
+
+define pm_op
+		'.* | '->*
+end define
+
+define multiplicative_expression
+		[pm_expression]
+	|	[multiplicative_expression] [SP] [multiplicative_op] [SP] [pm_expression]
+end define
+
+define multiplicative_op
+		'* | '/ | '%
+end define
+
+define additive_expression
+		[multiplicative_expression]
+	|	[additive_expression] [SP] [additive_op] [SP] [multiplicative_expression]
+end define
+
+define additive_op
+		'+ | '-
+end define
+
+define shift_expression
+		[additive_expression]
+	|	[shift_expression] [SP] [shift_op] [SP] [additive_expression]
+end define
+
+define shift_op
+		'<< | '>>
+end define
+
+define relational_expression
+		[shift_expression]
+	|	[relational_expression] [SP] [relational_op] [SP] [shift_expression]
+end define
+	
+define relational_op
+		'< | '> | '<= | '>=
+end define
+
+define equality_expression
+		[relational_expression]
+	|	[equality_expression] [SP] [equality_op] [SP] [relational_expression]
+end define
+
+define equality_op
+		'== | '!=
+end define
+
+define and_expression
+		[equality_expression]
+	|	[and_expression] [SP] '& [SP] [equality_expression]
+end define
+
+define exclusive_or_expression
+		[and_expression]
+	|	[exclusive_or_expression] [SP] '^ [SP] [and_expression]
+end define
+
+define inclusive_or_expression
+		[exclusive_or_expression]
+	|	[inclusive_or_expression] [SP] '| [SP] [exclusive_or_expression]
+end define
+
+define logical_and_expression
+		[inclusive_or_expression]
+	|	[logical_and_expression] [SP] '&& [SP] [inclusive_or_expression]
+end define
+
+define logical_or_expression
+		[logical_and_expression]
+	|	[logical_or_expression] [SP] '|| [SP] [logical_and_expression]
+end define
+
+define conditional_expression
+		[logical_or_expression]
+	|	[logical_or_expression] [SP] '? [SP] [expression] [SP] [conditional_colon] 
+			[SP] [assignment_expression]
+end define
+
+define conditional_colon
+		':|
+	|	':
+end define
+
+define assignment_expression
+		[conditional_expression]
+	|	[logical_or_expression] [SP] [assignment_operator] [SP] [assignment_expression]
+	|	[throw_expression]
+end define
+
+define assignment_operator
+		'= | '*= | '/= | '%= | '+= | '-= | '>>= | '<<= | '&= | '^= | '|=
+end define
+
+define expression
+		[assignment_expression]
+	|	[expression] ', [SP] [assignment_expression]
+end define
+
+define constant_expression
+		[conditional_expression]
+end define
+
+
+%
+% A.5 Statements
+%
+
+define statement
+		[labeled_statement]
+	|	[expression_statement] [NL]
+	|	[selection_statement]
+	|	[iteration_statement]
+	|	[jump_statement] [NL]
+	|	[declaration_statement] [NL]
+	|	[try_block] [NL]
+	|	[comment] [NL]
+	|	[compound_statement] [NL]
+end define
+
+define labeled_statement
+		[EX] [id] [label_colon] [IN] [NL] [statement]
+	|	[EX] 'case [SP] [constant_expression] [label_colon] [IN] [NL] [statement]
+	|	[EX] 'default [SP] [label_colon] [IN] [NL] [statement]
+end define
+
+define label_colon
+		':~
+	|	':
+end define
+
+define expression_statement
+		[opt expression] ';
+end define
+
+define compound_statement
+		[EX] '{ [IN] [NL] 
+			[repeat statement]
+		[EX] '} [IN]
+end define
+
+define selection_statement
+		'if [SP] '( [SP] [condition] [SP] ') [NL] 
+			[IN] [statement] [EX]
+		[repeat else_if_part] 
+		[opt else_part]
+	|	'switch [SP] '( [SP] [condition] [SP] ') [NL] 
+			[IN] [statement] [EX]
+end define
+
+define else_if_part
+		'else [SP] 'if '( [SP] [condition] [SP] ') [NL] 
+			[IN] [statement] [EX]
+end define
+
+define else_part
+		'else [NL] 
+			[IN] [statement] [EX]
+end define
+
+define iteration_statement
+		'while [SP] '( [SP] [condition] [SP] ) [NL]
+			[IN] [statement] [EX]
+	|	'do [NL] 
+			[IN] [statement] [EX]
+		'while '( [SP] [expression] [SP] ') '; [NL]
+	|	'for [SP] '( [SP] [for_init_statement] [SP] [opt condition] '; [SP]
+				[opt expression] [SP] ') [NL]
+			[IN] [statement] [EX]
+end define
+
+define condition
+		[expression]
+	|	[repeat type_specifier+] [declarator] [SP] '= [SP] [assignment_expression]
+end define
+
+define for_init_statement
+		[expression_statement]
+	|	[simple_declaration]
+end define
+
+define jump_statement
+		'break ';
+	|	'continue ';
+	|	'return [SPON] [opt expression] [SPOFF] ';
+	|	'goto [id] ';
+end define
+
+define declaration_statement
+		[block_declaration]
+end define
+
+%
+% A.6 Declarations
+%
+
+define declaration
+		[block_declaration] [NL]
+	|	[function_definition] [NL]
+	|	[template_declaration]
+	|	[explicit_instantiation]
+	|	[explicit_specialization]
+	|	[linkage_specification] [NL]
+	|	[namespace_definition] [NL]
+	|	[comment] [NL]
+end define
+
+define block_declaration
+		[simple_declaration]
+	|	[asm_definition]
+	|	[namespace_alias_definition]
+	|	[using_declaration]
+	|	[using_directive]
+end define
+
+define simple_declaration
+		[SPON] [repeat decl_specifier] [SPOFF] [SP] [list init_declarator] ';
+end define
+
+define decl_specifier
+		[storage_class_specifier]
+	|	[type_specifier]
+	|	[function_specifier]
+	|	'friend
+	|	'typedef
+end define
+
+define storage_class_specifier
+		'auto
+	|	'register
+	|	'static
+	|	'extern
+	|	'mutable
+end define
+
+define function_specifier
+		'inline
+	|	'virtual
+	|	'explicit
+end define
+
+define type_specifier
+		[simple_type_specifier]
+	|	[class_specifier]
+	|	[enum_specifier]
+	|	[elaborated_type_specifier]
+	|	[cv_qualifier]
+end define
+
+define simple_type_specifier
+		[opt '::] [opt nested_name_specifier] [type_name]
+	|	'char | 'wchar_t | 'bool | 'short | 'int | 'long 
+	|	'signed | 'unsigned | 'float | 'double | 'void
+end define
+
+define type_name
+		[class_name]
+	|	[enum_name]
+end define
+
+define elaborated_type_specifier
+		[class_key] [opt '::] [opt nested_name_specifier] [class_name]
+	|	'enum [opt '::] [opt nested_name_specifier] [enum_name]
+	|	'typename [opt '::] [opt nested_name_specifier] [type_name]
+end define
+
+define enum_name
+		'[ 'en [id] ']
+	|	[id]
+end define
+
+define enum_specifier
+		'enum [opt enum_name] [NL] '{ [NL] [IN] 
+			[opt enumerator_definition_list] [opt ',] [NL] [EX] 
+		'} 
+end define
+
+define enumerator_definition_list
+		[enumerator_definition] [opt enumerator_definition_list_tail]
+end define
+
+define enumerator_definition_list_tail
+		', [NL] [enumerator_definition_list]
+end define
+
+define enumerator_definition
+		[enumerator]
+	|	[enumerator] [SP] '= [SP] [constant_expression]
+end define
+
+define enumerator
+		[id]
+end define
+
+define namespace_name
+		'[ 'nn [id] ']
+	|	[id]
+end define
+
+define namespace_definition
+		'namespace [opt namespace_name] '{ [NL] [namespace_body] '}
+end define
+
+define namespace_alias_definition
+		'namespace [namespace_name] [SP] '= [SP] [qualified_namespace_specifier] '; [NL]
+end define
+
+define qualified_namespace_specifier
+		[opt '::] [opt nested_name_specifier] [namespace_name]
+end define
+
+define namespace_body
+		[repeat declaration]
+end define
+
+define using_declaration
+		'using [SPON] [id_expression] [SPOFF] ';
+	|	'using [SPON] [type_id] [SPOFF]';
+end define
+
+define using_directive
+		'using [SPON] 'namespace [opt '::] [opt nested_name_specifier] [namespace_name] [SPOFF]';
+end define
+
+define asm_definition
+		'asm [SP] '( [stringlit] ') '; [NL]
+end define
+
+define linkage_specification
+		'extern [SP] [stringlit] [SP] '{ [NL] [repeat declaration] '}
+	|	'extern [SP] [stringlit] [SP] [declaration]
+end define
+
+%
+% A.7 Declarators
+%
+
+define init_declarator
+		[declarator] [opt initializer]
+end define
+
+define declarator
+		[opt '$] [repeat ptr_operator] [declarator_or_declid] [repeat decl_array_or_param]
+end define
+
+define declarator_or_declid
+		[declarator_id]
+	|	[decl_open] [declarator] [decl_close]
+end define
+
+define decl_open
+		'(|
+	|	'(
+end define
+
+define decl_close
+		'|)
+	|	')
+end define
+
+define decl_array_or_param
+		[param_decl_open]
+			[opt parameter_declaration_clause]
+		[param_decl_close] [SPON] [repeat cv_qualifier] [SPOFF]
+		[opt exception_specification]
+	|	[square_open] [opt constant_expression] [square_close]
+end define
+
+define square_open
+		'[ '[
+	|	'[
+end define
+
+define square_close
+		'] ']
+	|	']
+end define
+
+define param_decl_open
+		'({
+	|	'(
+end define
+
+define param_decl_close
+		'})
+	|	')
+end define
+
+define ptr_operator
+		[ptr_amp]
+	|	[opt '::] [opt nested_name_specifier] [ptr_star] [repeat cv_qualifier]
+end define
+
+define ptr_amp
+		'<&>
+	|	'&
+end define
+
+define ptr_star
+		'<*>
+	|	'*
+end define
+
+define cv_qualifier
+		'const
+	|	'volatile
+end define
+
+define declarator_id
+		[opt '::] [opt nested_name_specifier] [unqual_declarator_id]
+end define
+
+define unqual_declarator_id
+		[declarator_name] [opt template_id_args]
+	|	'~ [declarator_name]
+	|	[operator_function_id]
+	|	[conversion_function_id]
+end define
+
+define declarator_name
+		'[ 'di [id] ']
+	|	[id]
+end define
+
+
+define type_id
+		[repeat type_specifier+] [opt abstract_declarator]
+end define
+
+define abstract_declarator
+		[repeat ptr_operator+] [opt rec_abstract_declarator] [repeat abstract_decl_array_or_param]
+	|	[decl_open] [abstract_declarator] [decl_close] [repeat abstract_decl_array_or_param]
+end define
+
+define rec_abstract_declarator
+		[decl_open] [abstract_declarator] [decl_close]
+end define
+
+define abstract_decl_array_or_param
+		[param_decl_open]
+			[opt parameter_declaration_clause]
+		[param_decl_close] [repeat cv_qualifier] [opt exception_specification]
+	|	[square_open] [constant_expression] [square_close]
+end define
+
+define parameter_declaration_clause
+		'...
+	|	[parameter_declaration_list] [opt trailing_dot_dot_dot] 
+end define
+
+define parameter_declaration_list
+		[parameter_declaration] [opt parameter_declaration_list_tail]
+end define
+
+define parameter_declaration_list_tail
+		', [SP] [parameter_declaration_list]
+end define
+
+define trailing_dot_dot_dot
+		'...
+	|	', '...
+end define
+
+define parameter_declaration
+		[SPON] [repeat decl_specifier+] [SPOFF] [opt parameter_declarator] [opt parameter_init]
+end define
+
+define parameter_declarator
+		[SP] [declarator]
+	|	[SP] [abstract_declarator]
+end define
+
+define parameter_init
+		[SP] '= [SP] [assignment_expression]
+end define
+
+define function_definition
+		[SPON] [repeat decl_specifier] [SPOFF] [SP] [declarator] [NL] [function_def_body]
+end define
+
+define function_def_body
+		[function_try_block]
+	|	[opt ctor_initializer] [function_body]
+end define
+
+define function_body
+		[IN] [compound_statement] [EX]
+end define
+
+define initializer
+		[SP] '= [SP] [initializer_clause]
+	|	'( [expression] ')
+end define
+
+define initializer_clause
+		[assignment_expression]
+	|	'{ [list initializer_clause+] [opt ',] '}
+	|	'{ '}
+end define
+
+
+%
+% A.8 Classes
+%
+define class_name
+		[class_id] [opt template_id_args]
+end define
+
+define class_id
+		'[ 'cn [id] ']
+	|	[id]
+end define
+
+define class_specifier
+		[class_head] [NL] '{ [NL] [IN] [repeat member_item] [EX] '}
+end define
+
+define class_head
+		[class_key] [opt class_name] [opt base_clause]
+	|	[class_key] [nested_name_specifier] [class_name] [opt base_clause]
+end define
+
+define class_key
+		'class 
+	|	'struct 
+	|	'union
+end define
+
+define member_item
+		[member_declaration]
+	|	[access_specifier] [label_colon] [NL]
+end define
+
+define member_declaration
+		[SPON] [repeat decl_specifier] [SPOFF] [SP] [list member_declarator] '; [NL]
+	|	[function_definition] [opt ';] [NL]
+	|	[using_declaration] [NL]
+	|	[template_declaration] [NL]
+end define
+
+define member_declarator
+		[declarator] [opt member_declarator_part]
+	|	[declarator] [bitfield_colon] [constant_expression]
+end define
+
+define bitfield_colon
+		':/
+	|	':
+end define
+
+define member_declarator_part
+		[pure_specifier]
+	|	[constant_initializer]
+end define
+
+define pure_specifier
+		[SP] '= [SP] '0
+end define
+
+define constant_initializer
+		[SP] '= [SP] [constant_expression]
+end define
+
+%
+% A.9 Derived Classes
+%
+
+define base_clause
+		[NL] [IN_8] [base_colon] [SP] [list base_specifier+] [EX_8]
+end define
+
+define base_colon
+		':+
+	|	':
+end define
+
+define base_specifier
+		[opt '::] [opt nested_name_specifier] [class_name]
+	|	'virtual [opt access_specifier] [opt '::] [opt nested_name_specifier] [class_name]
+	|	[access_specifier] [opt 'virtual] [opt '::] [opt nested_name_specifier] [class_name]
+end define
+
+define access_specifier
+		'private
+	|	'protected
+	|	'public
+end define
+
+%
+% A.10 Special Member Functions
+%
+
+define conversion_function_id
+		'operator [conversion_type_id]
+end define
+
+define conversion_type_id
+		[repeat type_specifier+] [opt conversion_declarator]
+end define
+
+define conversion_declarator
+		[ptr_operator] [opt conversion_declarator]
+end define
+
+define ctor_initializer
+		[ctor_colon] [NL] [IN] [list mem_initializer] [EX] [NL]
+end define
+
+define ctor_colon
+		':-
+	|	':
+end define
+
+define mem_initializer
+		[mem_initializer_id] '( [opt expression] ')
+end define
+
+define mem_initializer_id
+		[opt '::] [opt nested_name_specifier] [id] [opt template_id_args]
+end define
+
+%
+% A.11 Operator Overloading
+%
+
+define operator_function_id
+		'operator [operator]
+end define
+
+define operator
+		'new | 'delete 
+	|	'new [square_open] [square_close] 
+	|	'delete [square_open] [square_close]
+	|	'+ | '- | '* | '/ | '% | '^ | '& | '|
+	|	'~ | '!  | '= | '< | '> | '+= | '-=
+	|	'*= | '/= | '%= | '^= | '&= | '|=
+	|	'<< | '>> | '>>= | '<<= | '== | '!=
+	|	'<= | '>= | '&& | '|| | '++ | '-- | ',
+	|	'.* | '->* | '-> | '( ') | [square_open] [square_close]
+end define
+
+%
+% A.12 Templates
+%
+
+define template_declaration
+		[SPON] [opt 'export] 'template [SPOFF] [SP] [templ_param_open] 
+			[template_parameter_list] 
+		[templ_param_close] [SP] [declaration]
+end define
+
+define template_parameter_list
+		[template_parameter] [opt template_parameter_list_tail]
+end define
+
+define template_parameter_list_tail
+		', [SP] [template_parameter_list]
+end define
+
+define templ_param_open
+		'<{
+	|	'<
+end define
+
+define templ_param_close
+		'}>
+	|	'>
+end define
+
+define template_parameter
+		[type_parameter]
+	|	[parameter_declaration]
+end define
+
+define type_parameter
+		'class [SPON] [opt id] [SPOFF] [opt type_parameter_init]
+	|	'typename [SPON] [opt id] [SPOFF] [opt type_parameter_init]
+	|	'template [SP] [templ_param_open] [list template_parameter] 
+			[templ_param_close] [SP] 'class [SPON] [opt id] [SPOFF] [opt type_parameter_templ_init]
+end define
+
+define type_parameter_init
+		[SP] '= [SP] [type_id]
+end define
+
+define type_parameter_templ_init
+		[SP] '= [SP] [id_expression]
+end define
+
+define template_id
+		[template_name] [templ_arg_open] [list template_argument] [templ_arg_close]
+end define
+
+define template_id_args
+		[templ_arg_open] [list template_argument] [templ_arg_close]
+end define
+
+define template_name
+		[id]
+end define
+
+define template_argument
+		[type_id]
+	|	[assignment_expression]
+end define
+
+define explicit_instantiation
+		[opt 'extern] 'template [declaration]
+end define
+
+define explicit_specialization
+		'template [templ_param_open] [templ_param_close] [declaration]
+end define
+
+%
+% A.13 Exception Handling
+%
+
+define try_block
+		'try [compound_statement] [repeat handler+]
+end define
+
+define function_try_block
+		'try [opt ctor_initializer] [function_body] [repeat handler+]
+end define
+
+define handler
+		'catch '( [exception_declaration] ') [compound_statement]
+end define
+
+define exception_declaration
+		[repeat type_specifier+] [declarator]
+	|	[repeat type_specifier+] [abstract_declarator]
+	|	[repeat type_specifier+]
+	|	'...
+end define
+
+define throw_expression
+		'throw [opt assignment_expression]
+end define
+
+define exception_specification
+		'throw '( [list type_id] ')
+end define
+
+%
+% Program
+%
+
+define cpp_program
+		[SPOFF] [repeat declaration]
+end define
+
+%
+% Rules for undoing the disambiguation.
+%
+
+% Undo opening of parameter declaration.
+rule undoParamDeclOpen
+	replace $ [param_decl_open]
+		'({
+	by
+		'(
+end rule
+
+% Undo closing of parameter declaration.
+rule undoParamDeclClose
+	replace $ [param_decl_close]
+		'})
+	by
+		')
+end rule
+
+% Undo opening of declarator brackets.
+rule undoDeclOpen
+	replace $ [decl_open]
+		'(|
+	by
+		'(
+end rule
+
+% Undo closing of declarator brackets.
+rule undoDeclClose
+	replace $ [decl_close]
+		'|)
+	by
+		')
+end rule
+
+% Undo opening of template parameters.
+rule undoTemplParamOpen
+	replace $ [templ_param_open]
+		'<{
+	by
+		'<
+end rule
+
+% Undo closing of template parameters.
+rule undoTemplParamClose
+	replace $ [templ_param_close]
+		'}>
+	by
+		'>
+end rule
+
+% Undo opening of template arguments.
+rule undoTemplArgOpen
+	replace $ [templ_arg_open]
+		'<|
+	by
+		'<
+end rule
+
+% Undo closing of template arguments.
+rule undoTemplArgClose
+	replace $ [templ_arg_close]
+		'|>
+	by
+		'>
+end rule
+
+% Undo opening of a square bracket.
+rule undoSquareOpen
+	replace $ [square_open]
+		'[ '[
+	by
+		'[
+end rule
+
+% Undo closing of a square bracket.
+rule undoSquareClose
+	replace $ [square_close]
+		'] ']
+	by
+		']
+end rule
+
+
+% Undo <&> in a declarator.
+rule undoPtrAmp
+	replace $ [ptr_amp]
+		'<&>
+	by
+		'&
+end rule
+
+% Undo <*> in a declarator.
+rule undoPtrStar
+	replace $ [ptr_star]
+		'<*>
+	by
+		'*
+end rule
+
+% Undo a bitfield colon.
+rule undoBitfieldColon
+	replace $ [bitfield_colon]
+		':/
+	by
+		':
+end rule
+
+% Undo a base specifier colon.
+rule undoBaseColon
+	replace $ [base_colon]
+		':+
+	by
+		':
+end rule
+
+% Undo a constructor init colon.
+rule undoCtorColon
+	replace $ [ctor_colon]
+		':-
+	by
+		':
+end rule
+
+% Undo a label colon.
+rule undoLabelColon
+	replace $ [label_colon]
+		':~
+	by
+		':
+end rule
+
+% Undo a label colon.
+rule undoConditionalColon
+	replace $ [conditional_colon]
+		':|
+	by
+		':
+end rule
+
+
+% Undo the the opening of a declarator.
+rule undoDeclaratorBar
+	replace $ [opt '$]
+		'$
+	by
+		% Empty
+end rule
+
+% Undo the declarator name.
+rule undoDeclaratorName
+	replace $ [declarator_name]
+		'[ 'di Id [id] ']
+	by
+		Id
+end rule
+
+% Undo the namespace name.
+rule undoNamespaceName
+	replace $ [namespace_name]
+		'[ 'nn Id [id] ']
+	by
+		Id
+end rule
+
+% Undo the class id.
+rule undoClassId
+	replace $ [class_id]
+		'[ 'cn Id [id] ']
+	by
+		Id
+end rule
+
+% Undo the enumerator name.
+rule undoEnumName
+	replace $ [enum_name]
+		'[ 'en Id [id] ']
+	by
+		Id
+end rule
+
+rule undoInclude
+	replace $ [declaration]
+		Comment [comment]
+	where
+		Comment [grep "/* CXXPREP #include"]
+	construct Zero [number]
+		0
+	construct TailPos [number]
+		Zero [# Comment] [- 3]
+	by
+		Comment [: 12 TailPos]
+end rule
+
+
+% Tie all undo rules together.
+function undoDisambig
+	replace [program]
+		P [program]
+	by
+		P 
+			[undoParamDeclOpen] 
+			[undoParamDeclClose]
+			[undoDeclOpen]
+			[undoDeclClose]
+			[undoTemplParamOpen]
+			[undoTemplParamClose]
+			[undoTemplArgOpen]
+			[undoTemplArgClose]
+			[undoSquareOpen]
+			[undoSquareClose]
+			[undoPtrAmp]
+			[undoPtrStar]
+			[undoBitfieldColon]
+			[undoBaseColon]
+			[undoCtorColon]
+			[undoLabelColon]
+			[undoConditionalColon]
+			[undoDeclaratorName]
+			[undoDeclaratorBar]
+			[undoNamespaceName]
+			[undoEnumName]
+			[undoClassId]
+			[undoInclude]
+end function

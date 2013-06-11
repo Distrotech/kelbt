@@ -1,0 +1,241 @@
+/*
+ *  Copyright 2004-2006 Adrian Thurston <thurston@complang.org>
+ */
+
+/*  This file is part of C++ Pre-Parser.
+ *
+ *  C++ Pre-Parser is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2 of the License, or
+ *  (at your option) any later version.
+ * 
+ *  C++ Pre-Parser is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ * 
+ *  You should have received a copy of the GNU General Public License
+ *  along with C++ Pre-Parser; if not, write to the Free Software
+ *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA 
+ */
+
+#ifndef _PARSER_KH
+#define _PARSER_KH
+
+#include "names.h"
+#include "bstset.h"
+#include "dlist.h"
+
+struct Keyword 
+{
+	char *name; 
+	int id;
+};
+
+struct CtxItem
+{
+	CtxItem( int id, int state )
+		: id(id), state(state) { }
+
+	int id;
+	int state;
+};
+
+struct CmpCtxItem
+{
+	static int compare( const CtxItem &i1, const CtxItem &i2 )
+	{
+		if ( i1.id < i2.id )
+			return -1;
+		else if ( i1.id > i2.id )
+			return 1;
+		else if ( i1.state < i2.state )
+			return -1;
+		else if ( i1.state > i2.state )
+			return 1;
+		return 0;
+	}
+};
+
+typedef BstSet<CtxItem, CmpCtxItem> CtxMap;
+
+%%{
+	parser Parser;
+
+	token KW_Asm, KW_Auto, KW_Bool, KW_Break, KW_Case, KW_Catch, KW_Char,
+		KW_Class, KW_Const, KW_ConstCast, KW_Continue, KW_Default,
+		KW_Delete, KW_Do, KW_Double, KW_DynamicCast, KW_Else, KW_Enum,
+		KW_Explicit, KW_Export, KW_Extern, KW_False, KW_Float, KW_For,
+		KW_Friend, KW_Goto, KW_If, KW_Inline, KW_Int, KW_Long, KW_Mutable,
+		KW_Namespace, KW_New, KW_Operator, KW_Private, KW_Protected,
+		KW_Public, KW_Register, KW_ReinterpretCast, KW_Return, KW_Short,
+		KW_Signed, KW_Sizeof, KW_Static, KW_StaticCast, KW_Struct,
+		KW_Switch, KW_Template, KW_This, KW_Throw, KW_True, KW_Try,
+		KW_Typedef, KW_Typeid, KW_Typename, KW_Union, KW_Unsigned,
+		KW_Using, KW_Virtual, KW_Void, KW_Volatile, KW_WcharT, KW_While;
+
+	token TK_DoubleLit, TK_SingleLit, TK_Float, TK_Identifier, TK_ClassName,
+		TK_NameSep, TK_NamespaceName, TK_EnumName, TK_TypedefName, TK_Integer,
+		TK_TemplClassName, TK_TemplateId, TK_Arrow, TK_PlusPlus, TK_MinusMinus,
+		TK_ArrowStar, TK_DotStar, TK_ShiftLeft, TK_ShiftRight,
+		TK_IntegerDecimal, TK_IntegerOctal, TK_IntegerHex, TK_LtEquals,
+		TK_GtEquals, TK_EqualsEquals, TK_NotEquals, TK_AndAnd, TK_OrOr,
+		TK_MultAssign, TK_DivAssign, TK_PercentAssign, TK_PlusAssign,
+		TK_MinusAssign, TK_AmpAssign, TK_CaretAssign, TK_BarAssign,
+		TK_ShiftLeftAssign, TK_ShiftRightAssign, TK_BitfieldId,
+		TK_BitfieldColon, TK_DotDotDot, TK_PointerStar, TK_PointerAmp,
+		TK_BaseClauseColon, TK_CtorColon, TK_LabelColon, TK_CondExprColon,
+		TK_DeclaratorId, TK_ClassHeadName, TK_EnumHeadName, KW_Typeof,
+		KW_Restrict, TK_Leader, TK_Lookup, TK_UnknownId;
+
+	token TK_DeclaratorId, 
+		TK_ParameterOpen, TK_ParameterClose,
+		TK_DeclaratorOpen, TK_DeclaratorClose,
+		TK_TemplArgOpen, TK_TemplArgClose,
+		TK_TemplParamOpen, TK_TemplParamClose;
+}%%
+
+
+struct Parser
+{
+	%%{
+		parser Parser;
+		write instance_data;
+	}%%
+
+	void init();
+	int parseLangEl( int type, const Token *token );
+
+	Parser( std::ostream &out ) :
+		out(out)
+	{
+		/* Basic types. These are unique and so don't need to go into the map. */
+		templParamType = new Type;
+		templParamType->type = Type::TemplParamType;
+		unknownType = new Type;
+		unknownType->type = Type::UnknownType;
+
+		/* Init the root/current namespace. */
+		rootNamespace = new Object(Object::NamespaceType, 0, Stack<Object*>());
+		lookupNs.push( new Stack<Object*> );
+		lookupNs.top()->push( rootNamespace );
+		declNs.push( rootNamespace );
+		curNamespace.push( rootNamespace );
+		qualNs.push(0);
+
+		/* Create default types in the root namespace. */
+		char *vaListId = strdup( "__builtin_va_list" );
+		Object *vaListTypedef = new Object( Object::TypedefType, vaListId );
+		vaListTypedef->objType = unknownType;
+		rootNamespace->insertObject( vaListId, vaListTypedef );
+
+		/* Information transferred from a declaration's type to the
+		 * declaration. */
+		templDecl.push(false);
+		declarationData.push( DeclarationData() );
+		declarationData.top().init();
+	}
+
+	void writeToken( LangEl *lel );
+
+	int parseToken( int tok, bool qual, char *data, char *leader );
+
+	bool isNamespaceName( LangEl *lel, MapEl *mapEl );
+	bool isEnumName( LangEl *lel, MapEl *mapEl );
+	bool isClassName( LangEl *lel, MapEl *mapEl );
+	bool isTemplateClassName( LangEl *lel, MapEl *mapEl );
+	bool isTemplateId( LangEl *lel, MapEl *mapEl );
+	bool isTypedefName( LangEl *lel, MapEl *mapEl );
+	bool isId( LangEl *lel, MapEl *mapEl );
+
+	bool lookupInStack( LangEl *lel );
+	bool lookupQualified( LangEl *lel );
+
+	std::ostream &out;
+
+	Object *rootNamespace; 
+	Stack< Stack<Object*> *> lookupNs;
+	Stack<Object*> declNs;
+	Stack<Object*> curNamespace;
+	Stack<Object*> templateParamNs;
+
+	/* Information transferred from a declaration's type to its declarator. */
+	Stack<bool> templDecl;
+
+	Stack<DeclarationData> declarationData;
+	Stack<DeclaratorData> declaratorData;
+
+	/* Used by the parser to store the baseNs of the last qualification. */
+	Stack<Object*> qualNs;
+
+	/* Type structures are globally unique. This map gets you the singleton
+	 * structure for each type, allowing type comparisons by pointer. */
+	Type *templParamType;
+	Type *unknownType;
+	TypeMap typeMap;
+
+	Type *newType( Type::Property prop );
+	Type *addInProp( Type *type, Type::Property prop );
+	Type *reduceType( Type *type );
+
+	int numTemplParams( TypeList *typeList );
+	void clearLessSpecific( Vector<TypeListMapEl*> &matched, TypeList *typeList );
+	bool typeListsMatch( Object *baseNs, TypeList *specList, TypeList *argList );
+	Object *findSpecCovers( Object *baseNs, TypeList *typeList );
+};
+
+%% write token_defs;
+
+struct FrameIter 
+{
+	FrameIter( Parser &p ) 
+	:
+		p(p)
+	{
+		if ( p.templateParamNs.stack.length() > 0 ) {
+			state = TemplParams;
+			pos = p.templateParamNs.stack;
+		}
+		else {
+			state = Lookup;
+			pos = p.lookupNs.top()->stack;
+		}
+	};
+
+	Object *operator*() { return *pos; }
+	void operator++(int)
+	{
+		pos.increment();
+		if ( state == TemplParams && pos.end() ) {
+			state = Lookup;
+			pos = p.lookupNs.top()->stack;
+		}
+	}
+
+	Parser &p;
+	Stack<Object*>::Iter pos;
+	enum State { TemplParams, Lookup } state;
+
+	bool lte() { return state == TemplParams || pos.lte(); }
+};
+
+/* Iterate through a structure's tree of base classes and namespace usages
+ * (children in the tree). This iteration defines the order of lookup in a
+ * class's and namespace's scope. */
+struct ChildIter
+{
+	ChildIter( Object *frame )
+		: frame(frame), atEnd(false) { }
+
+	BaseNsVect::Iter child;
+	Stack< BaseNsVect::Iter > stack;
+	Object *frame;
+	bool atEnd;
+
+	Object *operator*() { return frame; }
+	void operator++(int);
+
+	bool lte() { return !atEnd; }
+};
+
+#endif /* _PARSER_KH */

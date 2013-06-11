@@ -1,0 +1,15 @@
+// @IGNORE: yes
+
+%% non_lalr
+	token a;
+	token b;
+	token c;
+
+	# This grammar is LR(1) but not SLR nor LALR(1).
+	start: a A a;
+	start: b A b;
+	start: a B b;
+	start: b B a;
+	A: c;
+	B: c;
+%%

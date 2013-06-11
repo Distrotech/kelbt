@@ -1,0 +1,44 @@
+// @IGNORE: yes
+
+%% conflicts1
+
+# This is an example of a grammar that causes conflicts for SLR but not for
+# LALR.
+
+token word;
+token tok1;
+token tok2;
+token kw1, kw2, kw3, kw4;
+
+# You've got a name and a type, both are words.
+name: word;
+type: word;
+
+#
+# These productions just establish kw1, and kw2 both in the follow set
+# of name and type.
+# 
+make_follow_name: name kw1;
+make_follow_name: name kw2;
+make_follow_type: type kw1;
+make_follow_type: type kw2;
+
+start: tok1 make_follow_name;
+start: tok2 make_follow_type;
+
+#
+# These are the productions where the conflicts orig.
+#
+
+# BAD: Uses the widely used name and type.
+start: name kw3;
+start: type kw4;
+
+# GOOD: Uses names and types that don't appear everywhere and thus have
+# no overlapping follow sets. 
+#start: name_specific kw3;                                 
+#start: type_specific kw4;                                
+                                                          
+name_specific: word;                                     
+type_specific: word;                                     
+

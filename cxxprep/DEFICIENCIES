@@ -1,0 +1,34 @@
+----
+
+CxxPrep does not lookup names on RHS of "." or "->" from within the type
+declaration space the of LHS. This would require evaluating the type of the
+LHS, which is a considerable amount of work to implement.
+
+----
+
+There is a limited implementation of the matching of the list template argument
+types to the partial template specializations. There is no unification of
+template parameter variables and a there is a simple approximation to the "most
+specialized matching" which is to take the match with the least number of
+template parameters. Template specializations with explicit values as template
+arguments cannot be matched by any parameter list. In any case that a template
+specialzation cannot be found when it should be, the root template is returned.
+
+----
+
+We do not guard against cycles longer than one arc in the namespace using
+graph. This is okay because it is not at all useful. If it does happen we can
+fall into an infinite loop if a name that does not exist is looked up.  The
+following code will hang cxxprep (gcc 3.3.5 as well).
+
+namespace foo
+{
+    namespace bar
+    {
+        using namespace foo;
+    }
+    using namespace bar;
+}
+
+int foo::bar::f();
+

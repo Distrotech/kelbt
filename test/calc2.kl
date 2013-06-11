@@ -1,0 +1,233 @@
+/*
+ * @LANG: c
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+
+struct Token { };
+struct LangEl;
+
+%%{
+	parser Parser;
+
+	# Token names.
+	token tok_plus, tok_mult, tok_number;
+}%%
+
+struct Parser
+{
+	%%{ 
+		write instance_data;
+		access p.;
+	}%%
+};
+
+struct Parser p;
+
+void init();
+int parseLangEl( int type, const struct Token *token );
+void finish();
+
+void token( int tokid );
+
+%% write token_defs;
+
+
+%%{
+
+parser Parser;
+
+# Expect an expression.
+start: E try {
+	printf( "start = E;\n" );
+};
+
+# Expressions returns a float result;
+nonterm E {
+	double res;
+};
+
+# Top level of expressions support addition.
+E: E tok_plus F try {
+	printf( "E = E tok_plus F;\n" );
+};
+E: F try {
+	printf( "E = F;\n" );
+};
+
+# Factor returns a float result;
+nonterm F {
+	double res;
+};
+
+# Second level supports multiplication.
+F: tok_number tok_mult F try {
+	printf( "F = tok_number tok_mult F;\n" );
+};
+F: tok_number try { 
+	printf( "F = tok_number;\n" );
+};
+
+}%%
+
+%%{
+	write types;
+	write data;
+}%%
+
+
+void init()
+{
+	%% write init;
+}
+
+void finish()
+{
+	%% write finish;
+}
+
+int parseLangEl( int type, const struct Token *token )
+{
+	%% write exec;
+	return p.errCount > 0 ? -1 : 0;
+}
+
+void token( int tokid )
+{
+	struct Token token;
+	int result = parseLangEl( tokid, &token );
+	if ( result < 0 )
+		printf("parse error\n");
+}
+
+void test0()
+{
+	init();
+	token( tok_number );
+	token( tok_plus );
+	token( tok_number );
+	token( tok_mult );
+	token( tok_number );
+	token( Parser_tk_eof );
+	finish();
+	printf( "%d\n", p.errCount );
+}
+void test1()
+{
+	init();
+	token( tok_number );
+	token( Parser_tk_eof );
+	finish();
+	printf( "%d\n", p.errCount );
+}
+void test2()
+{
+	init();
+	token( tok_number );
+	token( tok_plus );
+	token( tok_number );
+	token( tok_plus );
+	token( tok_number );
+	token( tok_plus );
+	token( tok_number );
+	token( tok_mult );
+	token( tok_number );
+	token( Parser_tk_eof );
+	finish();
+	printf( "%d\n", p.errCount );
+}
+void test3()
+{
+	init();
+	token( Parser_tk_eof );
+	finish();
+	printf( "%d\n", p.errCount );
+}
+void test4()
+{
+	init();
+	token( tok_plus );
+	token( Parser_tk_eof );
+	finish();
+	printf( "%d\n", p.errCount );
+}
+void test5()
+{
+	init();
+	token( tok_number );
+	token( tok_plus );
+	token( Parser_tk_eof );
+	finish();
+	printf( "%d\n", p.errCount );
+}
+void test6()
+{
+	init();
+	token( tok_number );
+	token( tok_mult );
+	token( Parser_tk_eof );
+	finish();
+	printf( "%d\n", p.errCount );
+}
+void test7()
+{
+	init();
+	token( tok_number );
+	token( tok_mult );
+	token( tok_number );
+	token( tok_number );
+	token( Parser_tk_eof );
+	finish();
+	printf( "%d\n", p.errCount );
+}
+
+int main()
+{
+	test0();
+	test1();
+	test2();
+	test3();
+	test4();
+	test5();
+	test6();
+	test7();
+	return 0;
+}
+
+#ifdef _____OUTPUT_____
+F = tok_number;
+E = F;
+F = tok_number;
+F = tok_number tok_mult F;
+E = E tok_plus F;
+start = E;
+0
+F = tok_number;
+E = F;
+start = E;
+0
+F = tok_number;
+E = F;
+F = tok_number;
+E = E tok_plus F;
+F = tok_number;
+E = E tok_plus F;
+F = tok_number;
+F = tok_number tok_mult F;
+E = E tok_plus F;
+start = E;
+0
+parse error
+1
+parse error
+1
+F = tok_number;
+E = F;
+parse error
+1
+parse error
+1
+parse error
+1
+#endif

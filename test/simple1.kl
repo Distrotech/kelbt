@@ -1,0 +1,183 @@
+#include <iostream>
+#include <stdlib.h>
+
+using namespace::std;
+
+struct Token { };
+struct LangEl;
+
+struct Parser
+{
+	%%{
+		parser Parser;
+
+		# Comment
+		token tok1;
+		token tok2;
+		token tok3;
+		token error;
+	}%%
+
+	%% write instance_data;
+
+	void init();
+	int parseLangEl( int type, const Token &tokenRef );
+	void finish();
+
+	void token( int tokid );
+};
+
+%% write token_defs;
+
+%%{
+
+parser Parser;
+
+start: silly_nothing A silly_nothing B silly_nothing C silly_nothing try {
+	cout << "start = silly_nothing A silly_nothing B silly_nothing C silly_nothing;" << endl; 
+};
+
+start: error tok1 try { cout << "start = error tok1;" << endl; };
+
+A: tok1 try { cout << "A = tok1;" << endl; };
+B: tok2 try { cout << "B = tok2;" << endl; };
+C: tok3 try { cout << "C = tok3;" << endl; };
+
+silly_nothing: try { cout << "silly_nothing = ;" << endl; };
+
+}%%
+
+%%{
+	write types;
+	write data;
+}%%
+
+
+void Parser::init()
+{
+	%% write init;
+}
+
+void Parser::finish()
+{
+	%% write finish;
+}
+
+int Parser::parseLangEl( int type, const Token &tokenRef )
+{
+	const Token *token = &tokenRef;
+	%% write exec;
+	return errCount == 0 ? 0 : -1;
+}
+
+void Parser::token( int tokid )
+{
+	Token token;
+	int result = parseLangEl( tokid, token );
+	if ( result < 0 )
+		cout << "parse error" << endl;
+}
+
+void test0()
+{
+	Parser parser;
+	parser.init();
+	parser.token( tok1 );
+	parser.token( tok2 );
+	parser.token( tok3 );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test1()
+{
+	Parser parser;
+	parser.init();
+	parser.token( tok1 );
+	parser.token( tok2 );
+	parser.token( tok3 );
+	parser.token( tok1 );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test2()
+{
+	Parser parser;
+	parser.init();
+	parser.token( tok1 );
+	parser.token( tok2 );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test3()
+{
+	Parser parser;
+	parser.init();
+	parser.token( tok1 );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test4()
+{
+	Parser parser;
+	parser.init();
+	parser.token( tok3 );
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test5()
+{
+	Parser parser;
+	parser.init();
+	parser.token( Parser_tk_eof );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+
+int main()
+{
+	test0();
+	test1();
+	test2();
+	test3();
+	test4();
+	test5();
+}
+
+#ifdef _____OUTPUT_____
+silly_nothing = ;
+A = tok1;
+silly_nothing = ;
+B = tok2;
+silly_nothing = ;
+C = tok3;
+silly_nothing = ;
+start = silly_nothing A silly_nothing B silly_nothing C silly_nothing;
+0
+silly_nothing = ;
+A = tok1;
+silly_nothing = ;
+B = tok2;
+silly_nothing = ;
+C = tok3;
+parse error
+1
+silly_nothing = ;
+A = tok1;
+silly_nothing = ;
+B = tok2;
+parse error
+1
+silly_nothing = ;
+A = tok1;
+parse error
+1
+parse error
+1
+parse error
+1
+#endif

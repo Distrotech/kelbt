@@ -1,0 +1,169 @@
+#include <iostream>
+#include <stdlib.h>
+using namespace std;
+
+//#define LOG_ACTIONS
+//#define LOG_BACKTRACK
+
+struct Token { };
+struct LangEl;
+
+struct Parser
+{
+	%%{
+		parser Parser;
+
+		# Token names.
+		token tok_plus, tok_mult, tok_number;
+	}%%
+
+	%% write instance_data;
+
+	void init();
+	int parseLangEl( int type, const Token &token );
+	void finish();
+};
+
+%% write token_defs;
+
+%%{
+
+parser Parser;
+
+# Expect an expression.
+start: E try {
+	cout << "start = E;" << endl;
+};
+
+# Expressions returns a float result;
+nonterm E {
+	double res;
+};
+
+# Top level of expressions support addition.
+E: E tok_plus F try {
+	cout << "E = E tok_plus F;" << endl;
+};
+E: F try {
+	cout << "E = F;" << endl;
+};
+
+# Factor returns a float result;
+nonterm F {
+	double res;
+};
+
+F: tok_number tok_plus try { 
+	cout << "F = tok_number tok_plus;" << endl;
+} undo { 
+	cout << "UNDOING F = tok_number tok_plus;" << endl;
+};
+
+F: tok_number try { 
+	cout << "F = tok_number;" << endl;
+};
+
+# Second level supports multiplication.
+F: F tok_mult tok_number try {
+	cout << "F = F tok_mult tok_number;" << endl;
+};
+
+}%%
+
+%%{
+	write types;
+	write data;
+}%%
+
+
+void Parser::init()
+{
+	%% write init;
+}
+
+void Parser::finish()
+{
+	%% write finish;
+}
+
+int Parser::parseLangEl( int type, const Token &tokenRef )
+{
+	const Token *token = &tokenRef;
+	%% write exec;
+	return errCount == 0 ? 0 : -1;
+}
+
+void test0()
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	parser.parseLangEl( tok_number, token );
+	parser.parseLangEl( tok_plus, token );
+	parser.parseLangEl( tok_number, token );
+	parser.parseLangEl( tok_mult, token );
+	parser.parseLangEl( tok_number, token );
+	parser.parseLangEl( Parser_tk_eof, token );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test1()
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	parser.parseLangEl( tok_number, token );
+	parser.parseLangEl( Parser_tk_eof, token );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+void test2()
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	parser.parseLangEl( tok_number, token );
+	parser.parseLangEl( tok_plus, token );
+	parser.parseLangEl( tok_number, token );
+	parser.parseLangEl( tok_plus, token );
+	parser.parseLangEl( tok_number, token );
+	parser.parseLangEl( tok_plus, token );
+	parser.parseLangEl( tok_number, token );
+	parser.parseLangEl( tok_mult, token );
+	parser.parseLangEl( tok_number, token );
+	parser.parseLangEl( Parser_tk_eof, token );
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+
+int main()
+{
+	test0();
+	test1();
+	test2();
+}
+
+#ifdef _____OUTPUT_____
+F = tok_number;
+E = F;
+F = tok_number;
+F = F tok_mult tok_number;
+E = E tok_plus F;
+start = E;
+0
+F = tok_number;
+E = F;
+start = E;
+0
+F = tok_number;
+E = F;
+F = tok_number;
+E = E tok_plus F;
+F = tok_number;
+E = E tok_plus F;
+F = tok_number;
+F = F tok_mult tok_number;
+E = E tok_plus F;
+start = E;
+0
+#endif

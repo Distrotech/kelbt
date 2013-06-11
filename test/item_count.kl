@@ -1,0 +1,205 @@
+#include <iostream>
+#include <stdlib.h>
+using namespace::std;
+
+//#define LOG_ACTIONS
+//#define LOG_BACKTRACK
+
+struct Token { };
+
+struct Parser
+{
+	%%{
+		parser Parser;
+
+		token tok1;
+		token tok2;
+	}%%
+
+	%% write instance_data;
+
+	void init();
+	int parseLangEl( int type, const Token &token );
+	void finish();
+};
+
+%% write token_defs;
+
+int item_count;
+#define ITEMS 3
+
+%%{
+
+parser Parser;
+
+start: counted_list tok1 tok1;
+
+counted_list: cl_init cl_list cl_end;
+
+cl_list: cl_list cl_pred item;
+cl_list: ;
+
+item: tok1 tok1;
+
+cl_init:
+	try {
+		item_count = 0;
+	};
+	
+cl_end:
+	try {
+		cout << "trial: cl_end" << endl;
+		if ( item_count < ITEMS ) {
+			cout << "reject: cl_end" << endl;
+			reject();
+		}
+	}
+	undo {
+		cout << "undo: cl_end" << endl;
+	};
+
+cl_pred:
+	try {
+		item_count += 1;
+		cout << "trial: cl_pred" << endl;
+		if ( item_count > ITEMS ) {
+			cout << "reject: cl_pred" << endl;
+			reject();
+		}
+	}
+	undo {
+		item_count -= 1;
+		cout << "undo: cl_pred" << endl;
+	};
+
+
+}%%
+
+%%{
+	write types;
+	write data;
+}%%
+
+
+void Parser::init()
+{
+	%% write init;
+}
+
+void Parser::finish()
+{
+	%% write finish;
+}
+
+int Parser::parseLangEl( int type, const Token &tokenRef )
+{
+	const Token *token = &tokenRef;
+	%% write exec;
+	return errCount == 0 ? 0 : -1;
+}
+
+void test( int *vals )
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	for (;;) {
+		int result = parser.parseLangEl( *vals, token );
+		if ( result < 0 )
+			cout << "parse error" << endl;
+		if ( *vals++ == Parser_tk_eof )
+			break;
+	}
+	parser.finish();
+	cout << parser.errCount << endl;
+}
+
+/* Exact. */
+int test1[] = 
+{
+	tok1, tok1, 
+	tok1, tok1, 
+	tok1, tok1, 
+	tok1, tok1, 
+	Parser_tk_eof
+};
+
+/* Too Short. */
+int test2[] = 
+{
+	tok1, tok1, 
+	tok1, tok1, 
+	tok1, tok1, 
+	tok1, Parser_tk_eof
+};
+
+/* Too Long. */
+int test3[] = 
+{
+	tok1, tok1, 
+	tok1, tok1, 
+	tok1, tok1, 
+	tok1, tok1, 
+	tok1, Parser_tk_eof
+};
+
+
+int main()
+{
+	test( test1 );
+	test( test2 );
+	test( test3 );
+}
+
+#ifdef _____OUTPUT_____
+trial: cl_pred
+trial: cl_pred
+trial: cl_pred
+trial: cl_pred
+reject: cl_pred
+undo: cl_pred
+trial: cl_end
+0
+trial: cl_pred
+trial: cl_pred
+trial: cl_pred
+trial: cl_pred
+reject: cl_pred
+undo: cl_pred
+trial: cl_end
+undo: cl_end
+undo: cl_pred
+trial: cl_end
+reject: cl_end
+undo: cl_end
+undo: cl_pred
+trial: cl_end
+reject: cl_end
+undo: cl_end
+undo: cl_pred
+trial: cl_end
+reject: cl_end
+parse error
+1
+trial: cl_pred
+trial: cl_pred
+trial: cl_pred
+trial: cl_pred
+reject: cl_pred
+undo: cl_pred
+trial: cl_end
+undo: cl_end
+undo: cl_pred
+trial: cl_end
+reject: cl_end
+undo: cl_end
+undo: cl_pred
+trial: cl_end
+reject: cl_end
+undo: cl_end
+undo: cl_pred
+trial: cl_end
+reject: cl_end
+parse error
+1
+#endif

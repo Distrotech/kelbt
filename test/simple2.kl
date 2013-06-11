@@ -1,0 +1,51 @@
+// @IGNORE: yes
+
+#include <iostream>
+#include <stdlib.h>
+
+using namespace::std;
+
+%% simple2
+{
+	token And;
+	token id;
+	token open;
+	token close;
+	token star;
+
+	start: E { cout << "start = E;" << endl; };
+	E: F open And F close star { cout << "E = F open And F close star;" << endl; };
+	E: { cout << "E = ;" << endl; };
+	F: id { cout << "F = id;" << endl; };
+	F: open E close { cout << "F = open E close;" << endl; };
+}
+
+void test0()
+{
+	Parser parser;
+	Token token;
+	parser.init();
+	parser.parseLangEl( id, token );
+	parser.parseLangEl( open, token );
+	parser.parseLangEl( And, token );
+	parser.parseLangEl( open, token );
+	parser.parseLangEl( close, token );
+	parser.parseLangEl( close, token );
+	parser.parseLangEl( star, token );
+	parser.parseLangEl( Parser_tk_eof, token );
+	cout << parser.finish() << endl;
+}
+
+int main()
+{
+	test0();
+}
+
+#ifdef _____OUTPUT_____
+F = id;
+E = ;
+F = open E close;
+E = F open And F close star;
+start = E;
+0
+#endif

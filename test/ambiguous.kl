@@ -1,0 +1,14 @@
+
+// @IGNORE: yes
+
+%% Ambiguous
+
+# A hugely ambiguous grammar.
+token a;
+
+start: A;
+A: A A;
+A: a;
+
+%%
+
