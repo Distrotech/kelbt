@@ -56,8 +56,8 @@ kelbt: $(GEN_SRC) $(OBJS)
 	$(CXX) -c $(CFLAGS) $(DEFS) $(INCS) -o $@ $<
 
 install: all
-	install -d $(prefix)/bin
-	install -s kelbt $(prefix)/bin/kelbt
+	install -d $(DESTDIR)$(prefix)/bin
+	install -s kelbt $(DESTDIR)$(prefix)/bin/kelbt
 
 distclean: clean
 	rm -f Makefile

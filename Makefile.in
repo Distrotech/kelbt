@@ -30,7 +30,7 @@ all:
 	@cd kelbt && $(MAKE)
 
 install:
-	@cd kelbt && $(MAKE) install
+	@cd kelbt && $(MAKE) DESTDIR=$(DESTDIR) install
 
 distclean: distclean-rec distclean-local
 
