@@ -21,7 +21,7 @@
 INCS = -I../aapl
 DEFS =
 
-CFLAGS = -g -Wall
+CFLAGS = -g -Wall -Wno-narrowing
 LDFLAGS =
 
 CC_SRCS = \
